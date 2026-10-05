@@ -410,6 +410,8 @@ export class CharacterMesh {
       rim: 0.3,
       painterly: 0.04,
       painterlyScale: 2,
+      cacheKey: 'skin;',
+      patch: patchSkin,
     });
     this.hiddenMaterial = new THREE.MeshBasicMaterial({ visible: false });
     this.body = new THREE.SkinnedMesh(geometry, [this.skinMaterial, this.hiddenMaterial]);
@@ -671,3 +673,34 @@ export class CharacterMesh {
 }
 
 const _c = new THREE.Color();
+
+/**
+ * Skin tone variation on the body-surface coordinates (aBodyUV = angle/2π,
+ * segment t; the head's t is world height): a soft blush over the cheeks
+ * and a warmer tint on the nose tip and ears' height band.
+ */
+function patchSkin(shader) {
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute vec2 aBodyUV;\nvarying vec2 vSkinUV;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkinUV = aBodyUV;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying vec2 vSkinUV;')
+    .replace(
+      '#include <color_fragment>',
+      /* glsl */ `#include <color_fragment>
+      {
+        float a = vSkinUV.x * 6.2831853;
+        float y = vSkinUV.y;
+        float cheek = 0.0;
+        for (int s = -1; s <= 1; s += 2) {
+          float da = a - (1.5708 + float(s) * 0.62);
+          float dy = (y - 1.655) / 0.024;
+          cheek += exp(-da * da / 0.045 - dy * dy);
+        }
+        float da = a - 1.5708;
+        float nose = exp(-da * da / 0.02 - pow((y - 1.675) / 0.018, 2.0));
+        float flush = clamp(cheek * 0.6 + nose * 0.3, 0.0, 1.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.06, 0.8, 0.78), flush);
+      }`,
+    );
+}

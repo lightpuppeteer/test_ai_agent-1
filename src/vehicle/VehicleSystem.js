@@ -40,7 +40,7 @@ export class RaycastVehicle {
    * @param {import('../core/PhysicsWorld.js').PhysicsWorld} physics
    * @param {{position: THREE.Vector3, yaw?: number, parent?: THREE.Object3D}} opts
    */
-  constructor(physics, { position, yaw = 0, parent = null, config = {} }) {
+  constructor(physics, { position, yaw = 0, parent = null, config = {}, textures = null }) {
     this.physics = physics;
     const R = physics.RAPIER;
     this.cfg = {
@@ -135,7 +135,7 @@ export class RaycastVehicle {
     this.drivetrain = new Drivetrain({ wheelRadius: c.wheelRadius });
 
     // --- Visuals ---------------------------------------------------------------
-    this.model = new CarModel();
+    this.model = new CarModel({ textures });
     this.object = this.model.group; // world-space, interpolated by PhysicsWorld
     this.object.position.copy(position);
     this.object.quaternion.copy(_q);
@@ -339,8 +339,9 @@ export class RaycastVehicle {
  * input (action names) into the active vehicle's controls each fixed step.
  */
 export class VehicleSystem {
-  constructor({ physics, interactions, parent }) {
+  constructor({ physics, interactions, parent, textures = null }) {
     this.physics = physics;
+    this.textures = textures;
     this.interactions = interactions;
     this.parent = parent;
     this.vehicles = [];
@@ -349,7 +350,7 @@ export class VehicleSystem {
   }
 
   spawnCar(position, yaw = 0, config) {
-    const v = new RaycastVehicle(this.physics, { position, yaw, parent: this.parent, config });
+    const v = new RaycastVehicle(this.physics, { position, yaw, parent: this.parent, config, textures: this.textures });
     const door = new Anchor({
       id: 'driverDoor',
       position: v.model.doorAnchor.position,

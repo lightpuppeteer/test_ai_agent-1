@@ -1,13 +1,130 @@
 import * as THREE from 'three';
 
+import * as Patterns from './textures/Patterns.js';
+
 /**
- * Procedural, tileable, low-frequency "painted" textures generated on a 2D
- * canvas at startup — no asset downloads, consistent art direction.
+ * Texture sets for the whole world, generated procedurally at startup — no
+ * asset downloads, one consistent art direction.
  *
- * Textures are authored *near white* with darker detail; the material colour
- * (from PALETTE) supplies the hue, so one granite texture serves both light
- * and dark stone, etc. All are meant for world-space triplanar mapping.
+ * Synthesised sets (stone, stucco, setts, slabs, roof tiles, wood, shutters,
+ * doors, windows, azulejos, iron, bark, leaves, fabric, tread, leather) come
+ * from textures/Patterns.js as an albedo map plus a packed detail map
+ * (normal XY, roughness factor, cavity) consumed by StylizedMaterial.
+ *
+ * Generation runs in a small pool of Web Workers. `set(name)` returns
+ * full-size textures *immediately* (flat placeholders: white albedo, neutral
+ * detail) and fills them in place when the worker delivers, so building the
+ * world never waits on several seconds of per-pixel work. `ready` resolves
+ * when every requested set has arrived. Without Worker support (Node) sets
+ * are generated synchronously.
+ *
+ * Banners and towels are painted on a 2D canvas (UV-mapped colour designs).
  */
+
+/** name → [Patterns function, options] */
+const SETS = {
+  ashlar: ['ashlar'],
+  stucco: ['stucco'],
+  cobbles: ['setts'],
+  paving: ['paving'],
+  roofTiles: ['roofTiles'],
+  wood: ['wood'],
+  shutter: ['shutter'],
+  door: ['door'],
+  window: ['windowPanes'],
+  windowCurtains: ['windowPanes', { curtains: true, seed: 98 }],
+  azulejo: ['azulejo'],
+  castIron: ['castIron'],
+  bark: ['bark'],
+  leaves: ['leaves'],
+  weave: ['weave'],
+  tread: ['tread'],
+  leather: ['leather'],
+  terracotta: ['terracotta'],
+};
+/** Edge length per set (must match the Patterns defaults). */
+const SIZES = {
+  ashlar: 1024,
+  stucco: 1024,
+  cobbles: 1024,
+  paving: 1024,
+  roofTiles: 1024,
+  castIron: 256,
+  leaves: 256,
+  weave: 256,
+  tread: 256,
+  leather: 256,
+  terracotta: 256,
+};
+
+class WorkerPool {
+  constructor(size) {
+    this.size = size;
+    this.workers = [];
+    this.idle = [];
+    this.queue = [];
+    this.jobs = new Map();
+    this.nextId = 1;
+    this.reaper = 0;
+  }
+
+  run(fn, options) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ id: this.nextId++, fn, options, resolve, reject });
+      this._pump();
+    });
+  }
+
+  _spawn() {
+    const w = new Worker(new URL('./textures/texture.worker.js', import.meta.url), { type: 'module' });
+    w.onmessage = ({ data }) => {
+      const job = this.jobs.get(data.id);
+      this.jobs.delete(data.id);
+      this.idle.push(w);
+      this._pump();
+      if (data.error) job.reject(new Error(data.error));
+      else job.resolve(data);
+    };
+    this.workers.push(w);
+    this.idle.push(w);
+  }
+
+  _pump() {
+    clearTimeout(this.reaper);
+    while (this.queue.length && !this.idle.length && this.workers.length < this.size) this._spawn();
+    while (this.idle.length && this.queue.length) {
+      const job = this.queue.shift();
+      this.jobs.set(job.id, job);
+      this.idle.pop().postMessage({ id: job.id, fn: job.fn, options: job.options });
+    }
+    // Free the workers once nothing has been requested for a while.
+    if (!this.jobs.size) this.reaper = setTimeout(() => this.dispose(), 3000);
+  }
+
+  dispose() {
+    for (const w of this.workers) w.terminate();
+    this.workers.length = 0;
+    this.idle.length = 0;
+  }
+}
+
+function dataTexture(S, fill, srgb, anisotropy) {
+  const data = new Uint8Array(S * S * 4);
+  new Uint32Array(data.buffer).fill(fill);
+  const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.anisotropy = anisotropy;
+  t.needsUpdate = true;
+  return t;
+}
+
+// Little-endian RGBA words: white albedo, neutral detail (flat normal, roughness ×1, no cavity).
+const WHITE = 0xffffffff;
+const NEUTRAL = 0xff808080;
 
 function mulberry32(seed) {
   return () => {
@@ -25,7 +142,6 @@ function canvas(size) {
   return [c, c.getContext('2d')];
 }
 
-const grey = (v, a = 1) => `rgba(${Math.round(v * 255)},${Math.round(v * 255)},${Math.round(v * 255)},${a})`;
 const tint = (r, g, b, a = 1) => `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},${a})`;
 
 /** Draws `fn(dx, dy)` at the 9 wrap offsets so shapes tile seamlessly. */
@@ -53,14 +169,6 @@ function blotches(ctx, size, rnd, count, rMin, rMax, vMin, vMax, alpha) {
   }
 }
 
-function speckle(ctx, size, rnd, count, vMin, vMax, alpha) {
-  for (let i = 0; i < count; i++) {
-    ctx.fillStyle = grey(vMin + rnd() * (vMax - vMin), alpha);
-    const s = 1 + rnd() * 2;
-    ctx.fillRect(rnd() * size, rnd() * size, s, s);
-  }
-}
-
 function finish(c, anisotropy) {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -74,171 +182,51 @@ function finish(c, anisotropy) {
 
 export class TextureFactory {
   constructor(renderer) {
-    this.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    this.anisotropy = Math.min(8, renderer?.capabilities.getMaxAnisotropy() ?? 1);
     this.cache = new Map();
+    this.sets = new Map();
+    this.pending = [];
+    const cores = globalThis.navigator?.hardwareConcurrency ?? 2;
+    this.pool = typeof Worker !== 'undefined' ? new WorkerPool(Math.max(1, Math.min(4, cores - 1))) : null;
   }
 
+  /** Resolves once every texture set requested so far has been generated. */
+  get ready() {
+    return Promise.all(this.pending);
+  }
+
+  /**
+   * Texture set { map, detail } by name (see SETS). Returned textures are
+   * usable immediately and upgrade in place when generation finishes.
+   */
+  set(name) {
+    let set = this.sets.get(name);
+    if (set) return set;
+    const [fn, options] = SETS[name] ?? [];
+    if (!fn) throw new Error(`Unknown texture set "${name}"`);
+    const S = SIZES[name] ?? 512;
+    set = {
+      map: dataTexture(S, WHITE, true, this.anisotropy),
+      detail: dataTexture(S, NEUTRAL, false, this.anisotropy),
+    };
+    set.map.name = `${name}.albedo`;
+    set.detail.name = `${name}.detail`;
+    this.sets.set(name, set);
+    const apply = (r) => {
+      set.map.image.data = r.albedo;
+      set.detail.image.data = r.detail;
+      set.map.needsUpdate = set.detail.needsUpdate = true;
+    };
+    if (this.pool) this.pending.push(this.pool.run(fn, options).then(apply));
+    else apply(Patterns[fn](options));
+    return set;
+  }
+
+  /** Albedo map of a set (or a cached painted texture). */
   get(name) {
+    if (SETS[name]) return this.set(name).map;
     if (!this.cache.has(name)) this.cache.set(name, this[name]());
     return this.cache.get(name);
-  }
-
-  /** Granite ashlar: staggered blocks, soft mortar, per-block tone. 2 m tile. */
-  ashlar() {
-    const S = 512;
-    const [c, ctx] = canvas(S);
-    const rnd = mulberry32(11);
-    ctx.fillStyle = grey(0.62);
-    ctx.fillRect(0, 0, S, S);
-    const rows = 6;
-    const rh = S / rows;
-    for (let r = 0; r < rows; r++) {
-      let x = -rnd() * 80;
-      while (x < S) {
-        const w = 70 + rnd() * 110;
-        const v = 0.84 + rnd() * 0.14;
-        const draw = (dx) => {
-          ctx.fillStyle = grey(v);
-          ctx.beginPath();
-          ctx.roundRect(x + dx + 3, r * rh + 3, w - 6, rh - 6, 9);
-          ctx.fill();
-        };
-        draw(0);
-        draw(S);
-        draw(-S);
-        x += w;
-      }
-    }
-    blotches(ctx, S, rnd, 60, 20, 90, 0.75, 1.0, 0.18);
-    speckle(ctx, S, rnd, 5000, 0.45, 1.0, 0.35);
-    return finish(c, this.anisotropy);
-  }
-
-  /** Lime-washed stucco: near-white with soft weathering and faint drips. 3 m tile. */
-  stucco() {
-    const S = 512;
-    const [c, ctx] = canvas(S);
-    const rnd = mulberry32(23);
-    ctx.fillStyle = grey(0.97);
-    ctx.fillRect(0, 0, S, S);
-    blotches(ctx, S, rnd, 90, 30, 140, 0.86, 1.0, 0.22);
-    // Weathering streaks.
-    for (let i = 0; i < 26; i++) {
-      const x = rnd() * S;
-      const y = rnd() * S;
-      const len = 60 + rnd() * 200;
-      wrapped(S, (dx, dy) => {
-        const g = ctx.createLinearGradient(0, y + dy, 0, y + dy + len);
-        g.addColorStop(0, grey(0.8, 0.0));
-        g.addColorStop(0.3, grey(0.8, 0.12));
-        g.addColorStop(1, grey(0.8, 0.0));
-        ctx.fillStyle = g;
-        ctx.fillRect(x + dx, y + dy, 3 + rnd() * 8, len);
-      });
-    }
-    speckle(ctx, S, rnd, 1500, 0.8, 1.0, 0.25);
-    return finish(c, this.anisotropy);
-  }
-
-  /** Granite setts (paralelepípedos): staggered rounded blocks, soft joints. 2 m tile. */
-  cobbles() {
-    const S = 512;
-    const [c, ctx] = canvas(S);
-    const rnd = mulberry32(37);
-    ctx.fillStyle = grey(0.6);
-    ctx.fillRect(0, 0, S, S);
-    const rows = 11;
-    const rh = S / rows;
-    for (let r = 0; r < rows; r++) {
-      let x = -rnd() * 40;
-      while (x < S) {
-        const w = rh * (0.9 + rnd() * 0.7);
-        const v = 0.8 + rnd() * 0.18;
-        const jy = (rnd() - 0.5) * 3;
-        const rot = (rnd() - 0.5) * 0.06;
-        const cx = x + w / 2;
-        const cy = r * rh + rh / 2 + jy;
-        wrapped(S, (dx, dy) => {
-          ctx.save();
-          ctx.translate(cx + dx, cy + dy);
-          ctx.rotate(rot);
-          const g = ctx.createLinearGradient(-w / 2, -rh / 2, w / 2, rh / 2);
-          g.addColorStop(0, grey(Math.min(1, v + 0.05)));
-          g.addColorStop(1, grey(v * 0.9));
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.roundRect(-w / 2 + 2.5, -rh / 2 + 2.5, w - 5, rh - 5, 10);
-          ctx.fill();
-          ctx.restore();
-        });
-        x += w;
-      }
-    }
-    blotches(ctx, S, rnd, 50, 20, 90, 0.75, 1.0, 0.16);
-    speckle(ctx, S, rnd, 3500, 0.45, 1.0, 0.25);
-    return finish(c, this.anisotropy);
-  }
-
-  /** Portuguese clay roof tiles (telha): scalloped rows with tone variation. 2 m tile. */
-  roofTiles() {
-    const S = 512;
-    const [c, ctx] = canvas(S);
-    const rnd = mulberry32(53);
-    ctx.fillStyle = grey(0.55);
-    ctx.fillRect(0, 0, S, S);
-    const cols = 10;
-    const rows = 12;
-    const w = S / cols;
-    const h = S / rows;
-    for (let r = rows; r >= -1; r--) {
-      for (let i = -1; i <= cols; i++) {
-        const x = (i + (r % 2) * 0.5) * w;
-        const y = r * h;
-        const v = 0.78 + rnd() * 0.22;
-        const g = ctx.createLinearGradient(x, 0, x + w, 0);
-        g.addColorStop(0, grey(v * 0.75));
-        g.addColorStop(0.45, grey(v));
-        g.addColorStop(1, grey(v * 0.7));
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.moveTo(x + 2, y);
-        ctx.lineTo(x + 2, y + h * 1.25);
-        ctx.quadraticCurveTo(x + w / 2, y + h * 1.65, x + w - 2, y + h * 1.25);
-        ctx.lineTo(x + w - 2, y);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-    blotches(ctx, S, rnd, 40, 20, 80, 0.6, 1.0, 0.15);
-    return finish(c, this.anisotropy);
-  }
-
-  /** Weathered planks for benches, tables, doors, boats. 1.5 m tile. */
-  wood() {
-    const S = 256;
-    const [c, ctx] = canvas(S);
-    const rnd = mulberry32(71);
-    const planks = 5;
-    const pw = S / planks;
-    for (let i = 0; i < planks; i++) {
-      const v = 0.78 + rnd() * 0.2;
-      ctx.fillStyle = grey(v);
-      ctx.fillRect(i * pw, 0, pw, S);
-      for (let k = 0; k < 9; k++) {
-        ctx.strokeStyle = grey(v * (0.75 + rnd() * 0.15), 0.5);
-        ctx.lineWidth = 1 + rnd() * 1.5;
-        ctx.beginPath();
-        const x0 = i * pw + rnd() * pw;
-        const amp = 2 + rnd() * 4;
-        const f = 0.02 + rnd() * 0.03;
-        for (let y = 0; y <= S; y += 8) ctx.lineTo(x0 + Math.sin((y * f * Math.PI * 2) / 4) * amp, y);
-        ctx.stroke();
-      }
-      ctx.fillStyle = grey(0.45, 0.9);
-      ctx.fillRect(i * pw, 0, 2, S);
-    }
-    blotches(ctx, S, rnd, 20, 10, 40, 0.7, 1.0, 0.15);
-    return finish(c, this.anisotropy);
   }
 
   /**

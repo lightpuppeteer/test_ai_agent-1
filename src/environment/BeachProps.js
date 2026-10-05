@@ -29,15 +29,48 @@ export class BeachProps {
     this.floaters = [];
 
     const S = createStylizedMaterial;
+    const wood = textures.set('wood');
+    const iron = textures.set('castIron');
     this.mat = {
-      wood: S({ name: 'BoatWood', color: PALETTE.wood, map: textures.get('wood'), triplanarScale: 0.8 }),
-      woodDark: S({ name: 'CrateWood', color: 0x8a6440, map: textures.get('wood'), triplanarScale: 1.0 }),
-      paint: S({ name: 'BoatPaint', color: 0x3f7f95, painterly: 0.15 }),
-      paintTrim: S({ name: 'BoatTrim', color: PALETTE.carTrim, painterly: 0.1 }),
-      buoy: S({ name: 'Buoy', color: 0xd4553a, rim: 0.35 }),
-      barrel: S({ name: 'Barrel', color: 0x9a6a3f, map: textures.get('wood'), triplanarScale: 1.2 }),
-      iron: S({ name: 'BeachIron', color: PALETTE.ironwork }),
-      pole: S({ name: 'ParasolPole', color: 0xe8dfcf }),
+      wood: S({ name: 'BoatWood', color: PALETTE.wood, map: wood.map, detailMap: wood.detail, triplanarScale: 0.8 }),
+      woodDark: S({ name: 'CrateWood', color: 0x8a6440, map: wood.map, detailMap: wood.detail, triplanarScale: 1.0 }),
+      // Paint over planks: the wood relief shows through, glossier than bare wood.
+      paint: S({
+        name: 'BoatPaint',
+        color: 0x3f7f95,
+        painterly: 0.15,
+        roughness: 0.6,
+        detailMap: wood.detail,
+        triplanarScale: 0.8,
+      }),
+      paintTrim: S({
+        name: 'BoatTrim',
+        color: PALETTE.carTrim,
+        painterly: 0.1,
+        roughness: 0.55,
+        detailMap: wood.detail,
+        triplanarScale: 0.8,
+      }),
+      buoy: S({
+        name: 'Buoy',
+        color: 0xd4553a,
+        rim: 0.35,
+        roughness: 0.45,
+        detailMap: iron.detail,
+        triplanarScale: 2,
+        normalScale: 0.5,
+      }),
+      barrel: S({ name: 'Barrel', color: 0x9a6a3f, map: wood.map, detailMap: wood.detail, triplanarScale: 1.2 }),
+      iron: S({
+        name: 'BeachIron',
+        color: PALETTE.ironwork,
+        map: iron.map,
+        detailMap: iron.detail,
+        triplanarScale: 2,
+        metalness: 0.4,
+        roughness: 0.6,
+      }),
+      pole: S({ name: 'ParasolPole', color: 0xe8dfcf, detailMap: wood.detail, triplanarScale: 2 }),
     };
     this.parasolMats = [0xd9534f, 0x3f88c5, 0xf2b134, 0xf4eadc].map((c, i) =>
       S({
@@ -47,6 +80,9 @@ export class BeachProps {
         windSway: 0.12,
         heightGradient: [-0.5, 0.0, 0.0],
         rim: 0.3,
+        detailMap: textures.set('weave').detail,
+        triplanarScale: 6,
+        normalScale: 0.8,
       }),
     );
   }
@@ -100,6 +136,10 @@ export class BeachProps {
       map: this.textures.towel(hex, '#f4eadc'),
       wrap: 0.6,
       painterly: 0.06,
+      roughness: 0.95,
+      detailMap: this.textures.set('weave').detail,
+      detailRepeat: [9, 20],
+      normalScale: 2.2,
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;

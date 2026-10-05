@@ -68,6 +68,7 @@ const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+const _fwd = new THREE.Vector3(0, 0, 1);
 
 export class CityBuilder {
   /**
@@ -86,7 +87,8 @@ export class CityBuilder {
     this.facades = [];
     this.bannerMounts = [];
     this.pennantMounts = [];
-    this.rng = mulberry(7);
+    this.rng = mulberry(7); // layout (footprints, floors, materials) — keep its call order stable
+    this.drng = mulberry(19); // decoration only, so detail never reshuffles the layout
 
     this._createAssets();
     this.colliders = physics.createStaticGroup('city', { surface: SURFACE.STONE });
@@ -98,26 +100,63 @@ export class CityBuilder {
   _createAssets() {
     const T = this.textures;
     const S = createStylizedMaterial;
+    // Texture set { map, detail } — tolerant of the headless test stub.
+    const tex = (name) => (T.set ? T.set(name) : { map: T.get?.(name) ?? null, detail: null });
+    // Hip roof with flat faces (each face needs one consistent roof-plane frame).
+    const roof = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1)
+      .rotateY(Math.PI / 4)
+      .translate(0, 0.5, 0)
+      .toNonIndexed();
+    roof.computeVertexNormals();
     this.geo = {
       box: new THREE.BoxGeometry(1, 1, 1),
-      // Unit hip roof: square pyramid with base at y = 0.
-      roof: new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1).rotateY(Math.PI / 4).translate(0, 0.5, 0),
+      roof,
       cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
+      pipe: new THREE.CylinderGeometry(0.5, 0.5, 1, 8, 1, true),
+      ridge: new THREE.CylinderGeometry(0.5, 0.5, 1, 7).rotateX(Math.PI / 2),
       trunk: new THREE.CylinderGeometry(0.16, 0.26, 1, 7).translate(0, 0.5, 0),
       clump: new THREE.IcosahedronGeometry(1, 1),
+      flower: new THREE.IcosahedronGeometry(1, 0),
+      sphere: new THREE.SphereGeometry(0.5, 10, 8),
+      cone: new THREE.ConeGeometry(0.5, 1, 4, 1).rotateY(Math.PI / 4).translate(0, 0.5, 0),
     };
-    const stuccoTex = T.get('stucco');
-    const ashlar = T.get('ashlar');
+    const stucco = tex('stucco');
+    const ashlar = tex('ashlar');
+    const roofTiles = tex('roofTiles');
+    const wood = tex('wood');
+    const shutter = tex('shutter');
+    const iron = tex('castIron');
     this.mat = {
       stucco: [PALETTE.stucco, PALETTE.stuccoShade, 0xeedcb4, 0xedd2c4].map((c, i) =>
-        S({ name: `Stucco${i}`, color: c, map: stuccoTex, triplanarScale: 1 / 3, heightGradient: [0, 2.5, 0.12] }),
+        S({
+          name: `Stucco${i}`,
+          color: c,
+          map: stucco.map,
+          detailMap: stucco.detail,
+          triplanarScale: 1 / 3,
+          heightGradient: [0, 2.5, 0.12],
+        }),
       ),
-      granite: S({ name: 'Granite', color: PALETTE.granite, map: ashlar, triplanarScale: 0.5, painterly: 0.12 }),
-      graniteDark: S({ name: 'GraniteDark', color: PALETTE.graniteDark, map: ashlar, triplanarScale: 0.5 }),
+      granite: S({
+        name: 'Granite',
+        color: PALETTE.granite,
+        map: ashlar.map,
+        detailMap: ashlar.detail,
+        triplanarScale: 0.5,
+        painterly: 0.1,
+      }),
+      graniteDark: S({
+        name: 'GraniteDark',
+        color: PALETTE.graniteDark,
+        map: ashlar.map,
+        detailMap: ashlar.detail,
+        triplanarScale: 0.5,
+      }),
       graniteWall: S({
         name: 'GraniteWall',
         color: PALETTE.graniteWarm,
-        map: ashlar,
+        map: ashlar.map,
+        detailMap: ashlar.detail,
         triplanarScale: 0.45,
         heightGradient: [0, 3, 0.15],
       }),
@@ -125,16 +164,18 @@ export class CityBuilder {
       cobblesAO: S({
         name: 'CobblesAO',
         color: PALETTE.granite,
-        map: T.get('cobbles'),
+        map: tex('cobbles').map,
+        detailMap: tex('cobbles').detail,
         triplanarScale: 0.6,
         wrap: 0.6,
-        roughness: 0.82,
+        roughness: 0.85,
         vertexAO: true,
       }),
       pavingAO: S({
         name: 'PavingAO',
         color: 0xc9bca6,
-        map: ashlar,
+        map: tex('paving').map,
+        detailMap: tex('paving').detail,
         triplanarScale: 0.33,
         wrap: 0.6,
         roughness: 0.85,
@@ -143,22 +184,112 @@ export class CityBuilder {
       roof: S({
         name: 'RoofClay',
         color: PALETTE.roofClay,
-        map: T.get('roofTiles'),
+        map: roofTiles.map,
+        detailMap: roofTiles.detail,
         triplanarScale: 0.5,
-        painterly: 0.14,
+        roofMapping: true,
+        painterly: 0.1,
       }),
-      roofDark: S({ name: 'RoofClayDark', color: PALETTE.roofClayDark, map: T.get('roofTiles'), triplanarScale: 0.5 }),
-      wood: S({ name: 'Wood', color: PALETTE.wood, map: T.get('wood'), triplanarScale: 0.7 }),
-      woodDark: S({ name: 'WoodDark', color: PALETTE.woodDark, map: T.get('wood'), triplanarScale: 0.7 }),
-      iron: S({ name: 'Iron', color: PALETTE.ironwork, rim: 0.1, painterly: 0.04 }),
-      glass: S({ name: 'WindowPane', color: 0x2b3440, rim: 0.4, painterly: 0.03, wrap: 0.2 }),
-      shutters: [PALETTE.shutterGreen, PALETTE.shutterBlue, PALETTE.woodDark].map((c, i) =>
-        S({ name: `Shutter${i}`, color: c, map: T.get('wood'), triplanarScale: 1 }),
+      roofDark: S({
+        name: 'RoofClayDark',
+        color: PALETTE.roofClayDark,
+        map: roofTiles.map,
+        detailMap: roofTiles.detail,
+        triplanarScale: 0.5,
+        roofMapping: true,
+      }),
+      ridge: S({
+        name: 'RoofRidge',
+        color: PALETTE.roofClayDark,
+        map: roofTiles.map,
+        detailMap: roofTiles.detail,
+        triplanarScale: 2,
+      }),
+      wood: S({ name: 'Wood', color: PALETTE.wood, map: wood.map, detailMap: wood.detail, triplanarScale: 0.7 }),
+      woodDark: S({
+        name: 'WoodDark',
+        color: PALETTE.woodDark,
+        map: wood.map,
+        detailMap: wood.detail,
+        triplanarScale: 0.7,
+      }),
+      door: [PALETTE.woodDark, 0x2f4f3a, 0x6b2f2a].map((c, i) =>
+        S({ name: `Door${i}`, color: c, map: tex('door').map, detailMap: tex('door').detail, roughness: 0.8 }),
       ),
-      bark: S({ name: 'Bark', color: PALETTE.bark, painterly: 0.2 }),
+      iron: S({
+        name: 'Iron',
+        color: PALETTE.ironwork,
+        map: iron.map,
+        detailMap: iron.detail,
+        triplanarScale: 1.5,
+        metalness: 0.35,
+        roughness: 0.62,
+        rim: 0.1,
+        painterly: 0.04,
+      }),
+      // Glazed windows: painted frames + glossy panes reflecting the sky IBL.
+      windows: ['window', 'windowCurtains'].map((n, i) =>
+        S({
+          name: `Window${i}`,
+          color: 0xffffff,
+          map: tex(n).map,
+          detailMap: tex(n).detail,
+          roughness: 0.62,
+          envMapIntensity: 1.25,
+          rim: 0.12,
+          painterly: 0.02,
+          wrap: 0.3,
+        }),
+      ),
+      glass: S({
+        name: 'WindowPane',
+        color: 0x2b3440,
+        rim: 0.4,
+        painterly: 0.03,
+        wrap: 0.2,
+        roughness: 0.08,
+        envMapIntensity: 1.3,
+      }),
+      shutters: [PALETTE.shutterGreen, PALETTE.shutterBlue, PALETTE.woodDark].map((c, i) =>
+        S({ name: `Shutter${i}`, color: c, map: shutter.map, detailMap: shutter.detail, roughness: 0.75 }),
+      ),
+      azulejo: S({
+        name: 'Azulejo',
+        color: 0xffffff,
+        map: tex('azulejo').map,
+        detailMap: tex('azulejo').detail,
+        triplanarScale: 1 / 0.56,
+        roughness: 0.6,
+        painterly: 0.03,
+        envMapIntensity: 1.2,
+      }),
+      terracotta: S({ name: 'Terracotta', color: 0xb8643f, painterly: 0.12, roughness: 0.92 }),
+      flowers: [0xd8323e, 0xe85d9c, 0xf4f0e4, 0xe9a23b].map((c, i) =>
+        S({
+          name: `Flowers${i}`,
+          color: c,
+          painterly: 0.1,
+          wrap: 0.7,
+          rim: 0.3,
+          windSway: 0.04,
+          heightGradient: [-1, 1, 0.1],
+        }),
+      ),
+      bark: S({
+        name: 'Bark',
+        color: PALETTE.bark,
+        map: tex('bark').map,
+        detailMap: tex('bark').detail,
+        triplanarScale: 1.5,
+        painterly: 0.15,
+      }),
       foliage: S({
         name: 'Foliage',
         color: PALETTE.foliage,
+        map: tex('leaves').map,
+        detailMap: tex('leaves').detail,
+        triplanarScale: 1.4,
+        normalScale: 0.8,
         painterly: 0.25,
         painterlyScale: 0.9,
         wrap: 0.8,
@@ -413,39 +544,69 @@ export class CityBuilder {
       null,
       _s.set(w + 0.16, base + 0.9 - bottom, d + 0.16),
     );
-    // Corner quoins.
-    if (!graniteHouse)
-      for (const [qx, qz] of [
-        [x0, z0],
-        [x1, z0],
-        [x0, z1],
-        [x1, z1],
-      ])
-        B.place(box, this.mat.granite, _p.set(qx, (base + top) / 2, qz), null, _s.set(0.5, top - base, 0.5));
-    // Cornice band + floor bands.
-    B.place(box, this.mat.granite, _p.set(cx, top + 0.12, cz), null, _s.set(w + 0.5, 0.24, d + 0.5));
-    // Hip roof (pitch varies a little).
+    // Corner quoins: alternating long/short dressed stones.
+    if (!graniteHouse) this._quoins(x0, x1, z0, z1, base, top);
+    // Stepped cornice (three courses, each projecting further).
+    for (const [y, h, ext] of [
+      [top + 0.06, 0.12, 0.22],
+      [top + 0.155, 0.07, 0.4],
+      [top + 0.205, 0.05, 0.52],
+    ])
+      B.place(box, this.mat.granite, _p.set(cx, y, cz), null, _s.set(w + ext, h, d + ext));
+    // Hip roof (pitch varies a little) + ridge caps along the four hips.
     const roofH = Math.min(w, d) * (0.26 + rng() * 0.1);
+    const roofY = top + 0.22;
     B.place(
       this.geo.roof,
       rng() < 0.3 ? this.mat.roofDark : this.mat.roof,
-      _p.set(cx, top + 0.22, cz),
+      _p.set(cx, roofY, cz),
       null,
       _s.set(w + 1.0, roofH, d + 1.0),
     );
-    // Chimney.
-    if (rng() < 0.6) {
-      B.place(
-        box,
-        wallMat,
-        _p.set(cx + (rng() - 0.5) * w * 0.4, top + roofH * 0.6, cz + (rng() - 0.5) * d * 0.4),
-        null,
-        _s.set(0.6, roofH * 1.1, 0.6),
+    const apex = new THREE.Vector3(cx, roofY + roofH, cz);
+    for (const [sx, sz] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ])
+      this._beam(
+        this.geo.ridge,
+        this.mat.ridge,
+        new THREE.Vector3(cx + (sx * (w + 1)) / 2, roofY, cz + (sz * (d + 1)) / 2),
+        apex,
+        0.14,
       );
+    // Chimney with a capping slab and terracotta pots.
+    if (rng() < 0.6) {
+      const chx = cx + (rng() - 0.5) * w * 0.4;
+      const chz = cz + (rng() - 0.5) * d * 0.4;
+      const chTop = top + roofH * 1.15;
+      B.place(box, wallMat, _p.set(chx, top + roofH * 0.6, chz), null, _s.set(0.6, roofH * 1.1, 0.6));
+      B.place(box, this.mat.granite, _p.set(chx, chTop + 0.04, chz), null, _s.set(0.78, 0.08, 0.78));
+      const pots = 1 + Math.floor(this.drng() * 2);
+      for (let k = 0; k < pots; k++)
+        B.place(
+          this.geo.cyl,
+          this.mat.terracotta,
+          _p.set(chx + (pots > 1 ? (k - 0.5) * 0.28 : 0), chTop + 0.22, chz),
+          null,
+          _s.set(0.18, 0.3, 0.18),
+        );
     }
     if (roofOnly) return;
 
     const shutterMat = this.mat.shutters[Math.floor(rng() * this.mat.shutters.length)];
+    // Per-house style (decoration RNG only).
+    const style = {
+      tiled: !graniteHouse && this.drng() < 0.18, // azulejo-clad façade
+      keystones: this.drng() < 0.5,
+      flowers: this.drng() < 0.65,
+      grilles: this.drng() < 0.5,
+      door: this.mat.door[Math.floor(this.drng() * this.mat.door.length)],
+      window: this.mat.windows[this.drng() < 0.45 ? 1 : 0],
+      number: 1 + Math.floor(this.drng() * 120),
+    };
     for (const f of fronts) {
       const F = FACES[f];
       const len = f === '+z' || f === '-z' ? w : d;
@@ -461,54 +622,218 @@ export class CityBuilder {
         tavern: tavern && f === '-x',
         stone: graniteHouse,
       });
-      this._facade(faceCenter, F, len, groundHere, base, floors, floorH, shutterMat, tavern && f === '-x');
+      this._facade(faceCenter, F, len, groundHere, base, floors, floorH, shutterMat, tavern && f === '-x', style, top);
+      this._rainwater(faceCenter, F, len, groundHere, top);
     }
   }
 
-  _facade(center, F, len, ground, base, floors, floorH, shutterMat, tavern) {
+  /** Dressed corner stones, alternating long and short faces up each corner. */
+  _quoins(x0, x1, z0, z1, base, top) {
+    const B = this.batch;
+    const course = 0.36;
+    for (const [qx, qz] of [
+      [x0, z0],
+      [x1, z0],
+      [x0, z1],
+      [x1, z1],
+    ]) {
+      const dx = qx === x0 ? 1 : -1;
+      const dz = qz === z0 ? 1 : -1;
+      for (let k = 0, y = base; y + course <= top + 0.01; k++, y += course) {
+        const long = k % 2 === 0;
+        const sx = long ? 0.62 : 0.36;
+        const sz = long ? 0.36 : 0.62;
+        B.place(
+          this.geo.box,
+          this.mat.granite,
+          _p.set(qx + dx * (sx / 2 - 0.05), y + course / 2, qz + dz * (sz / 2 - 0.05)),
+          null,
+          _s.set(sx, course - 0.025, sz),
+        );
+      }
+    }
+  }
+
+  /** Places a cylinder-like `geometry` (unit, along +Z) between two points. */
+  _beam(geometry, material, a, b, radius) {
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    _q.setFromUnitVectors(_fwd, dir.multiplyScalar(1 / len));
+    this.batch.place(geometry, material, _p.addVectors(a, b).multiplyScalar(0.5), _q, _s.set(radius, radius, len));
+  }
+
+  /** Eave gutter along a façade + a downpipe with a shoe at one end. */
+  _rainwater(center, F, len, ground, top) {
+    const yaw = F.yaw;
+    _right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+    const out = 0.5;
+    const gy = top + 0.18;
+    const a = center
+      .clone()
+      .addScaledVector(F.n, out)
+      .addScaledVector(_right, -len / 2 - 0.45)
+      .setY(gy);
+    const b = center
+      .clone()
+      .addScaledVector(F.n, out)
+      .addScaledVector(_right, len / 2 + 0.45)
+      .setY(gy);
+    this._beam(this.geo.ridge, this.mat.iron, a, b, 0.12);
+    const side = this.drng() < 0.5 ? -1 : 1;
+    const px = center.clone().addScaledVector(_right, side * (len / 2 - 0.35));
+    const wallOff = 0.09;
+    // Offset from the gutter back to the wall, then straight down.
+    this._beam(
+      this.geo.ridge,
+      this.mat.iron,
+      px
+        .clone()
+        .addScaledVector(F.n, out)
+        .setY(gy - 0.05),
+      px
+        .clone()
+        .addScaledVector(F.n, wallOff)
+        .setY(gy - 0.45),
+      0.09,
+    );
+    const pipeTop = gy - 0.45;
+    const pipeBot = ground + 0.25;
+    this.batch.place(
+      this.geo.pipe,
+      this.mat.iron,
+      px
+        .clone()
+        .addScaledVector(F.n, wallOff)
+        .setY((pipeTop + pipeBot) / 2),
+      null,
+      _s.set(0.09, pipeTop - pipeBot, 0.09),
+    );
+    this._beam(
+      this.geo.ridge,
+      this.mat.iron,
+      px
+        .clone()
+        .addScaledVector(F.n, wallOff)
+        .setY(pipeBot + 0.02),
+      px
+        .clone()
+        .addScaledVector(F.n, wallOff + 0.22)
+        .setY(ground + 0.05),
+      0.1,
+    );
+    // Wall clips.
+    for (let y = pipeBot + 0.6; y < pipeTop - 0.3; y += 1.6)
+      this.batch.place(
+        this.geo.box,
+        this.mat.iron,
+        px.clone().addScaledVector(F.n, 0.05).setY(y),
+        _q.setFromAxisAngle(UP, yaw),
+        _s.set(0.14, 0.04, 0.1),
+      );
+  }
+
+  _facade(center, F, len, ground, base, floors, floorH, shutterMat, tavern, style, top) {
     const B = this.batch;
     const box = this.geo.box;
+    const rnd = this.drng;
     const q = _q.setFromAxisAngle(UP, F.yaw).clone();
     _right.set(Math.cos(F.yaw), 0, -Math.sin(F.yaw));
+    const right = _right.clone();
     const n = F.n;
     const count = Math.max(1, Math.floor(len / 2.9));
     const spacing = len / count;
     const doorSlot = Math.floor(count / 2);
     const at = (u, y, out = 0) =>
-      new THREE.Vector3().copy(center).addScaledVector(_right, u).addScaledVector(n, out).setY(y);
+      new THREE.Vector3().copy(center).addScaledVector(right, u).addScaledVector(n, out).setY(y);
+
+    // Azulejo cladding over the whole façade (windows and doors sit proud of it).
+    if (style.tiled) {
+      const y0 = base + 0.9;
+      B.place(box, this.mat.azulejo, at(0, (y0 + top) / 2, 0.012), q, _s.set(len - 0.62, top - y0, 0.02));
+    }
 
     for (let i = 0; i < count; i++) {
       const u = -len / 2 + (i + 0.5) * spacing;
-      // Ground floor: door or shop window.
+      // Ground floor: door or window.
       if (i === doorSlot || tavern) {
         const wide = tavern && i !== doorSlot;
         const dw = wide ? 1.8 : 1.15;
         B.place(box, this.mat.granite, at(u, ground + 1.3, 0.04), q, _s.set(dw + 0.45, 2.75, 0.12));
-        B.place(box, wide ? this.mat.glass : this.mat.woodDark, at(u, ground + 1.15, 0.09), q, _s.set(dw, 2.3, 0.08));
+        if (wide) {
+          B.place(box, style.window, at(u, ground + 1.15, 0.09), q, _s.set(dw, 2.3, 0.08));
+        } else {
+          B.place(box, style.door, at(u, ground + 1.15, 0.09), q, _s.set(dw, 2.3, 0.08));
+          // Fanlight, threshold, handle and a tiled house number.
+          B.place(box, this.mat.glass, at(u, ground + 2.46, 0.09), q, _s.set(dw, 0.26, 0.06));
+          B.place(box, this.mat.granite, at(u, ground + 2.33, 0.11), q, _s.set(dw + 0.05, 0.06, 0.1));
+          B.place(box, this.mat.graniteDark, at(u, ground + 0.03, 0.2), q, _s.set(dw + 0.5, 0.06, 0.3));
+          B.place(
+            this.geo.sphere,
+            this.mat.iron,
+            at(u + dw * 0.36, ground + 1.05, 0.15),
+            null,
+            _s.set(0.07, 0.07, 0.07),
+          );
+          B.place(box, this.mat.azulejo, at(u + dw / 2 + 0.42, ground + 2.0, 0.03), q, _s.set(0.2, 0.2, 0.025));
+        }
       } else {
-        B.place(box, this.mat.granite, at(u, base + 1.55, 0.04), q, _s.set(1.25, 1.75, 0.12));
-        B.place(box, this.mat.glass, at(u, base + 1.55, 0.08), q, _s.set(0.95, 1.45, 0.08));
+        const wy = base + 1.55;
+        B.place(box, this.mat.granite, at(u, wy, 0.04), q, _s.set(1.25, 1.75, 0.12));
+        B.place(box, style.window, at(u, wy, 0.08), q, _s.set(0.95, 1.45, 0.08));
+        B.place(box, this.mat.granite, at(u, wy - 0.86, 0.1), q, _s.set(1.4, 0.08, 0.24)); // sill
+        if (style.grilles) {
+          // Wrought-iron grille: rails + bars standing off the window.
+          for (const gy of [wy - 0.62, wy + 0.62])
+            B.place(box, this.mat.iron, at(u, gy, 0.17), q, _s.set(0.98, 0.035, 0.035));
+          for (let k = 0; k < 6; k++)
+            B.place(box, this.mat.iron, at(u - 0.42 + k * 0.168, wy, 0.17), q, _s.set(0.025, 1.32, 0.025));
+        }
       }
       // Upper floors.
       for (let f = 1; f < floors; f++) {
         const y = base + 0.9 + f * floorH + 1.2;
         B.place(box, this.mat.granite, at(u, y, 0.04), q, _s.set(1.2, 1.9, 0.12));
-        B.place(box, this.mat.glass, at(u, y, 0.08), q, _s.set(0.9, 1.6, 0.08));
+        B.place(box, style.window, at(u, y, 0.08), q, _s.set(0.9, 1.6, 0.08));
+        // Lintel (+ keystone) and projecting sill.
+        B.place(box, this.mat.granite, at(u, y + 0.98, 0.09), q, _s.set(1.36, 0.16, 0.16));
+        if (style.keystones) B.place(box, this.mat.granite, at(u, y + 0.99, 0.13), q, _s.set(0.2, 0.26, 0.14));
+        B.place(box, this.mat.granite, at(u, y - 0.99, 0.12), q, _s.set(1.34, 0.08, 0.28));
         // Open shutters either side.
         B.place(box, shutterMat, at(u - 0.82, y, 0.12), q, _s.set(0.45, 1.6, 0.05));
         B.place(box, shutterMat, at(u + 0.82, y, 0.12), q, _s.set(0.45, 1.6, 0.05));
-        // First-floor balconies on some windows (granite slab + iron railing).
+        // First-floor balconies on some windows (granite slab on corbels + iron railing).
         if (f === 1 && this.rng() < 0.45) {
           const by = y - 0.95;
           B.place(box, this.mat.granite, at(u, by, 0.35), q, _s.set(1.6, 0.12, 0.7));
-          B.place(box, this.mat.iron, at(u, by + 0.9, 0.68), q, _s.set(1.6, 0.05, 0.05));
+          for (const s of [-0.6, 0.6])
+            B.place(box, this.mat.granite, at(u + s, by - 0.16, 0.25), q, _s.set(0.14, 0.22, 0.46));
+          for (const ry of [by + 0.9, by + 0.12])
+            B.place(box, this.mat.iron, at(u, ry, 0.68), q, _s.set(1.6, 0.05, 0.05));
+          for (const s of [-1, 1])
+            B.place(box, this.mat.iron, at(u + s * 0.78, by + 0.9, 0.38), q, _s.set(0.05, 0.05, 0.62));
           for (let k = 0; k <= 6; k++)
             B.place(box, this.mat.iron, at(u - 0.78 + k * 0.26, by + 0.45, 0.68), q, _s.set(0.035, 0.85, 0.035));
+        } else if (style.flowers && rnd() < 0.5) {
+          this._flowerBox(at(u, y - 0.86, 0.2), q, right);
         }
       }
     }
-    // Floor band between ground and first floor.
-    B.place(box, this.mat.granite, at(0, base + 0.9 + floorH - 0.05, 0.05), q, _s.set(len, 0.18, 0.14));
+    // String courses at every floor.
+    for (let f = 1; f < floors; f++)
+      B.place(
+        box,
+        this.mat.granite,
+        at(0, base + 0.9 + f * floorH - 0.05, 0.05),
+        q,
+        _s.set(len, f === 1 ? 0.18 : 0.12, 0.14),
+      );
+
+    // A wall lantern by some doors.
+    if (!tavern && rnd() < 0.35) {
+      const lu = -len / 2 + (doorSlot + 0.5) * spacing - 1.1;
+      B.place(box, this.mat.iron, at(lu, ground + 2.9, 0.25), q, _s.set(0.04, 0.04, 0.42));
+      this._lantern(at(lu, ground + 2.62, 0.42), 0.7);
+    }
 
     if (tavern) {
       // Hanging wooden sign on an iron bracket + a lantern.
@@ -518,19 +843,90 @@ export class CityBuilder {
     }
   }
 
+  /** Terracotta window box with leaves and geraniums. */
+  _flowerBox(pos, q, right) {
+    const B = this.batch;
+    const rnd = this.drng;
+    B.place(this.geo.box, this.mat.terracotta, pos.clone().setY(pos.y + 0.1), q, _s.set(0.84, 0.2, 0.22));
+    const flowers = this.mat.flowers[Math.floor(rnd() * this.mat.flowers.length)];
+    for (let k = 0; k < 6; k++) {
+      const p = pos
+        .clone()
+        .addScaledVector(right, -0.34 + k * 0.136 + (rnd() - 0.5) * 0.05)
+        .setY(pos.y + 0.26 + rnd() * 0.06);
+      const r = 0.09 + rnd() * 0.04;
+      B.place(this.geo.clump, this.mat.foliage, p, null, _s.set(r, r * 0.8, r));
+      B.place(this.geo.flower, flowers, p.setY(p.y + r * 0.7), null, _s.set(0.045, 0.045, 0.045));
+    }
+  }
+
   _lampPost(x, z) {
     const y = PROM_Y;
     const B = this.batch;
-    B.place(this.geo.box, this.mat.iron, _p.set(x, y + 1.75, z), null, _s.set(0.12, 3.5, 0.12));
-    B.place(this.geo.box, this.mat.iron, _p.set(x, y + 3.45, z - 0.25), null, _s.set(0.06, 0.06, 0.6));
-    B.place(this.geo.box, this.mat.graniteDark, _p.set(x, y + 0.2, z), null, _s.set(0.35, 0.4, 0.35));
+    // Granite pedestal, fluted iron column, scrolled arm and a caged lantern.
+    B.place(this.geo.box, this.mat.graniteDark, _p.set(x, y + 0.2, z), null, _s.set(0.42, 0.4, 0.42));
+    B.place(this.geo.cyl, this.mat.iron, _p.set(x, y + 0.55, z), null, _s.set(0.26, 0.3, 0.26));
+    B.place(this.geo.cyl, this.mat.iron, _p.set(x, y + 2.0, z), null, _s.set(0.11, 2.9, 0.11));
+    B.place(this.geo.cyl, this.mat.iron, _p.set(x, y + 0.75, z), null, _s.set(0.18, 0.08, 0.18));
+    B.place(this.geo.cyl, this.mat.iron, _p.set(x, y + 3.42, z), null, _s.set(0.16, 0.06, 0.16));
+    this._beam(
+      this.geo.ridge,
+      this.mat.iron,
+      new THREE.Vector3(x, y + 3.4, z),
+      new THREE.Vector3(x, y + 3.5, z - 0.55),
+      0.05,
+    );
+    this._beam(
+      this.geo.ridge,
+      this.mat.iron,
+      new THREE.Vector3(x, y + 3.05, z),
+      new THREE.Vector3(x, y + 3.45, z - 0.3),
+      0.035,
+    );
+    B.place(this.geo.sphere, this.mat.iron, _p.set(x, y + 3.55, z), null, _s.set(0.09, 0.09, 0.09));
     this._lantern(new THREE.Vector3(x, y + 3.2, z - 0.5));
     this.colliders.addBox(_p.set(x, y + 1.75, z), _s.set(0.2, 3.5, 0.2));
   }
 
-  _lantern(pos) {
-    this.batch.place(this.geo.box, this.mat.iron, pos.clone().setY(pos.y + 0.28), null, _s.set(0.34, 0.08, 0.34));
-    this.batch.place(this.geo.box, this.mat.lantern, pos, null, _s.set(0.24, 0.4, 0.24), { castShadow: false });
+  /** Caged lantern: iron cap and base, glowing glass, corner bars, finial. */
+  _lantern(pos, scale = 1) {
+    const B = this.batch;
+    const k = scale;
+    B.place(
+      this.geo.cone,
+      this.mat.iron,
+      pos.clone().setY(pos.y + 0.2 * k),
+      null,
+      _s.set(0.42 * k, 0.16 * k, 0.42 * k),
+    );
+    B.place(
+      this.geo.box,
+      this.mat.iron,
+      pos.clone().setY(pos.y - 0.21 * k),
+      null,
+      _s.set(0.28 * k, 0.04 * k, 0.28 * k),
+    );
+    B.place(this.geo.box, this.mat.lantern, pos, null, _s.set(0.22 * k, 0.38 * k, 0.22 * k), { castShadow: false });
+    for (const [sx, sz] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ])
+      B.place(
+        this.geo.box,
+        this.mat.iron,
+        _p.set(pos.x + sx * 0.12 * k, pos.y, pos.z + sz * 0.12 * k),
+        null,
+        _s.set(0.025 * k, 0.4 * k, 0.025 * k),
+      );
+    B.place(
+      this.geo.sphere,
+      this.mat.iron,
+      pos.clone().setY(pos.y + 0.39 * k),
+      null,
+      _s.set(0.06 * k, 0.06 * k, 0.06 * k),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -619,7 +1015,7 @@ export class CityBuilder {
     for (let i = 0; i < arches; i++) {
       const px = x0 + pier + span / 2 + i * (span + pier);
       B.place(this.geo.box, this.mat.granite, _p.set(px, base + H + 2.2, z1 + 0.05), null, _s.set(1.2, 2.6, 0.14));
-      B.place(this.geo.box, this.mat.glass, _p.set(px, base + H + 2.2, z1 + 0.09), null, _s.set(0.85, 2.25, 0.1));
+      B.place(this.geo.box, this.mat.windows[1], _p.set(px, base + H + 2.2, z1 + 0.09), null, _s.set(0.85, 2.25, 0.1));
       B.place(this.geo.box, this.mat.granite, _p.set(px, base + H + 2.2, z1 + 0.12), null, _s.set(0.1, 2.25, 0.06)); // mullion
     }
     // Banner mounts between the windows: iron rods parallel to the wall;

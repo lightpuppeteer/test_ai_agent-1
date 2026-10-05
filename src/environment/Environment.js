@@ -104,7 +104,7 @@ export class Environment {
     const { physics, root } = this;
     this.props = new BeachProps({ physics, textures: this.textures, buoyancy: this.buoyancy, parent: root }).build();
     const avoid = this.props.interactables.map((it) => ({ x: it.object.position.x, z: it.object.position.z, r: 1.6 }));
-    this.beachDressing = new BeachDressing({ physics, avoid }).build();
+    this.beachDressing = new BeachDressing({ physics, avoid, textures: this.textures }).build();
     root.add(this.beachDressing.group);
     this.interactables.push(...this.props.interactables);
   }

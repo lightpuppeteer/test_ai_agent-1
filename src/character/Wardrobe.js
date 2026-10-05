@@ -5,6 +5,7 @@ import { VerletCloth } from '../simulation/VerletCloth.js';
 import { SpringBoneChain, createSpringTail } from '../simulation/SpringBoneChain.js';
 import { BONE_INDEX as BI } from './CharacterMesh.js';
 import { sampleSection } from './body/Loft.js';
+import { fabric } from './FabricShader.js';
 
 const TAU = Math.PI * 2;
 const sm = (a, b, x) => {
@@ -62,6 +63,7 @@ const MASKS = {
  *         body capsules inflated per `layer` (outer layers stay outside)
  *  dress  skinned bell with GPU flow displacement + GPU capsule push-out
  *  spring spring-bone tail (hair, scarf)
+ * `fabric` picks the procedural cloth relief (see FabricShader.js).
  * Optional: `profiles` restricts an item to 'feminine' / 'masculine' bodies
  * (e.g. the bikini top), `windScale` tunes a cloth item's wind response and
  * `over` lists cloth items this one is layered on top of.
@@ -69,6 +71,7 @@ const MASKS = {
 export const WARDROBE_ITEMS = {
   tunic: {
     kind: 'shell',
+    fabric: 'cotton',
     hides: ['belly', 'chest', 'shoulder', 'upperArm'],
     material: { color: PALETTE.tunic, roughness: 0.92, rim: 0.28, painterly: 0.12, painterlyScale: 1.2 },
     parts: [
@@ -79,6 +82,7 @@ export const WARDROBE_ITEMS = {
   },
   trousers: {
     kind: 'shell',
+    fabric: 'denim',
     hides: ['hips', 'thigh', 'shin'],
     material: { color: PALETTE.trousers, roughness: 0.9, rim: 0.22 },
     parts: [
@@ -89,6 +93,7 @@ export const WARDROBE_ITEMS = {
   },
   boots: {
     kind: 'shell',
+    fabric: 'leather',
     hides: ['foot'],
     material: { color: 0x4a3426, roughness: 0.65, rim: 0.2 },
     parts: [
@@ -100,6 +105,7 @@ export const WARDROBE_ITEMS = {
   },
   shirt: {
     kind: 'shell',
+    fabric: 'cotton',
     hides: ['belly', 'chest', 'shoulder'],
     material: { color: 0xf1ece0, roughness: 0.95, rim: 0.3, painterly: 0.06 },
     parts: [
@@ -110,6 +116,7 @@ export const WARDROBE_ITEMS = {
   },
   shirtHem: {
     kind: 'cloth',
+    fabric: 'cotton',
     layer: 2,
     // Pinned above and outside the skirt's waistband; `over` keeps the free
     // hem radially outside the skirt (cloth-over-cloth layering).
@@ -126,6 +133,7 @@ export const WARDROBE_ITEMS = {
   },
   skirt: {
     kind: 'cloth',
+    fabric: 'cotton',
     layer: 1,
     ring: { segment: 'torso', t: 1.02, inflate: 0.012 },
     cols: 30,
@@ -139,6 +147,7 @@ export const WARDROBE_ITEMS = {
   },
   cloak: {
     kind: 'cloth',
+    fabric: 'wool',
     layer: 2,
     arc: { segment: 'torso', t: 1.43, from: (3 * Math.PI) / 2 - 1.05, to: (3 * Math.PI) / 2 + 1.05, inflate: 0.03 },
     cols: 9,
@@ -151,6 +160,7 @@ export const WARDROBE_ITEMS = {
   },
   bikiniTop: {
     kind: 'shell',
+    fabric: 'lycra',
     profiles: ['feminine'],
     mask: 'bikiniTop',
     material: { color: 0xd9564a, roughness: 0.42, rim: 0.3, painterly: 0.04, polygonOffset: true },
@@ -158,26 +168,30 @@ export const WARDROBE_ITEMS = {
   },
   bikiniBottom: {
     kind: 'shell',
+    fabric: 'lycra',
     mask: 'bikiniBottom',
     material: { color: 0xd9564a, roughness: 0.42, rim: 0.3, painterly: 0.04, polygonOffset: true },
     parts: [{ segment: 'torso', t0: 0.8, t1: 1.0, rings: 16, inflate: 0.004, capStart: true }],
   },
   silverDressBodice: {
     kind: 'shell',
+    fabric: 'satin',
     mask: 'dressBodice',
     hides: ['belly'],
     material: 'silver',
     parts: [{ segment: 'torso', t0: 0.95, t1: 1.47, rings: 30, inflate: 0.008 }],
   },
-  silverDressSkirt: { kind: 'dress', material: 'silver', top: 0.975, hem: 0.3, hemRadius: 0.33 },
+  silverDressSkirt: { kind: 'dress', fabric: 'satin', material: 'silver', top: 0.975, hem: 0.3, hemRadius: 0.33 },
   hairShort: {
     kind: 'shell',
+    fabric: 'hair',
     mask: 'hairShort',
     material: { color: PALETTE.hair, roughness: 0.7, rim: 0.4, painterly: 0.1, painterlyScale: 6 },
     parts: [{ segment: 'head', t0: 1.655, t1: 1.845, rings: 14, inflate: 0.011, capEnd: true }],
   },
   hairLong: {
     kind: 'shell',
+    fabric: 'hair',
     mask: 'hairLong',
     material: { color: PALETTE.hair, roughness: 0.62, rim: 0.4, painterly: 0.1, painterlyScale: 6 },
     parts: [{ segment: 'head', t0: 1.6, t1: 1.845, rings: 18, inflate: 0.014, capEnd: true }],
@@ -193,6 +207,7 @@ export const WARDROBE_ITEMS = {
   },
   scarf: {
     kind: 'spring',
+    fabric: 'wool',
     bone: 'chest',
     offset: [0.06, 0.05, -0.1],
     rotation: [0.5, 0, 0.15],
@@ -257,7 +272,7 @@ export class Wardrobe {
     const spec = def.material;
     const mask = def.mask;
     const dress = def.kind === 'dress';
-    const key = `${typeof spec === 'string' ? spec : JSON.stringify(spec)}|${mask ?? ''}|${dress}`;
+    const key = `${typeof spec === 'string' ? spec : JSON.stringify(spec)}|${mask ?? ''}|${dress}|${def.fabric}|${def.kind}`;
     if (!dress && this._materials.has(key)) return this._materials.get(key);
     const silver = spec === 'silver';
     const base = silver
@@ -296,6 +311,15 @@ export class Wardrobe {
             if (garmentMask(bodyAngle, vBodyDir.z) < 0.5) discard;`,
           );
       });
+    }
+    if (def.fabric) {
+      // Verlet cloth has no stable rest positions: pattern on its UVs (in metres).
+      const uvScale = def.kind === 'cloth' ? [def.ring ? 1.0 : 0.6, def.length] : null;
+      const fab = fabric(def.fabric, { uvScale });
+      Object.assign(uniforms, fab.uniforms);
+      Object.assign(defines, fab.defines);
+      patches.push(fab.patch);
+      cacheKey += fab.cacheKey;
     }
     if (dress) {
       Object.assign(uniforms, {
@@ -513,7 +537,17 @@ export class Wardrobe {
     holder.position.set(...def.offset);
     holder.rotation.set(...def.rotation);
     this.mesh.bones[def.bone].add(holder);
-    const material = createStylizedMaterial({ name: item.name, color: def.color, roughness: 0.7, rim: 0.35 });
+    const fab = fabric(def.fabric ?? 'hair');
+    const material = createStylizedMaterial({
+      name: item.name,
+      color: def.color,
+      roughness: 0.7,
+      rim: 0.35,
+      uniforms: fab.uniforms,
+      defines: fab.defines,
+      patch: fab.patch,
+      cacheKey: fab.cacheKey,
+    });
     const tail = createSpringTail({ holder, material, ...def.tail });
     item.spring = new SpringBoneChain(tail.bones, {
       ...def.spring,

@@ -9,6 +9,13 @@ Portugal. It covers:
   low-frequency procedural sky, instead of ambient lights. Walkable ground has baked vertex AO, plus screen-space AO,
   subtle bloom, SMAA and a warm/cool 3D LUT. The gradient sky blends into `FogExp2` and an analytic height fog, and wind
   is prominent (curling streaks, pooled dust, pollen and sea spray, swaying foliage, flags).
+- **Materials and detail**: every surface has a procedurally synthesised PBR texture set. The sets include granite
+  ashlar, weathered stucco, worn setts, sandstone slabs, clay roof tiles, planks, louvred shutters, panelled doors, glazed
+  windows, azulejos, cast iron, bark, terracotta, fabric weave, tyre tread and leather. Each set has an albedo map and a
+  detail map carrying normal, roughness and cavity, generated in Web Workers at startup with no downloads. Houses
+  have dressed quoins, stepped cornices, sills, lintels, iron grilles, shutters, flower boxes, gutters, downpipes, ridge
+  tiles and chimney pots. Garments carry procedural fabric relief (weave, twill, rib knit, leather, satin folds, hair
+  strands).
 - **Physics** ([Rapier](https://rapier.rs)): a sand heightfield that matches the shader-displaced dunes, a Gerstner
   ocean with buoyancy sampled from the same waves, a slanted cobbled plaza, an arcaded town hall and narrow streets
   built from grouped static colliders, and a raycast car with a drivetrain.
@@ -87,7 +94,9 @@ src/
 │  ├─ BeachProps.js             towels (lie-down anchors), parasols, floating crates/barrels/buoys/boat
 │  ├─ BeachDressing.js          density-weighted pebbles, driftwood with capsule colliders
 │  ├─ MeshBatcher.js            groups placements into InstancedMesh draw calls
-│  └─ TextureFactory.js         procedural tileable canvas textures (ashlar, stucco, setts, tiles, wood)
+│  ├─ TextureFactory.js         texture sets on demand: worker pool, placeholders upgraded in place; painted banners/towels
+│  └─ textures/                 TextureSynth.js (periodic noise, height → normal/cavity bake), Patterns.js (the material
+│                               library), texture.worker.js
 ├─ character/
 │  ├─ CharacterController.js    entity: components + FSM + intent + KCC bridging helpers
 │  ├─ StateMachine.js           State / StateMachine with an explicit transition table
@@ -96,6 +105,7 @@ src/
 │  ├─ CharacterMesh.js          lofted skinned body, masculine↔feminine morph, body regions, garment builder
 │  ├─ body/                     Loft.js (superellipse lofting), BodyProfiles.js (the two profiles)
 │  ├─ Wardrobe.js               garments (shell / cloth / dress / spring), outfits, masks, layering
+│  ├─ FabricShader.js           procedural fabric relief (bind-space or UV), surface-gradient bump
 │  └─ states/                   LocomotionStates, AnchoredStates (sit, lay), VehicleStates
 ├─ interaction/
 │  ├─ InteractionManager.js     spatial-hash proximity, focus scoring, focus events
@@ -252,6 +262,44 @@ The silver fabric is high-metalness, fairly rough PBR. A soft sky IBL alone make
 satin, so a fragment patch reshapes its indirect specular with a stylised "studio" gradient keyed on the world-space
 reflection vector: a dark ground, a bright horizon band and a dimmer zenith, with band width scaling with roughness.
 
+**Procedural texture sets.** `textures/Patterns.js` authors each material as fields over the unit tile: a height,
+an albedo and a roughness factor, built from periodic value and cellular noise, running-bond layouts and random-walk
+cracks. `TextureSynth.bake()` derives the rest physically. The normal comes from height differences scaled by the real
+relief depth over the texel size, so a 1 cm mortar joint reads the same on a 2 m tile as on a 3 m one. The cavity is
+the height minus its local blur. The result is two RGBA8 maps: albedo (sRGB) and a detail map (RG normal, B
+roughness / 2, A cavity). Albedo stays near white wherever the hue comes from the material colour, so one granite set
+serves light and dark stone. Generating everything takes about 3.7 s of single-threaded JS, so `TextureFactory` runs
+it in a small worker pool. `set(name)` returns full-size textures immediately (flat placeholders), and the generated
+buffers are copied in when they arrive, so world building never waits.
+
+`StylizedMaterial` reads the detail map in one of three modes:
+
+- **triplanar**: world-space, with each projection's height gradient mapped straight onto the surface (UDN blend), for
+  stone, stucco, ground, wood, iron and foliage
+- **roof-plane**: u runs along the eave and v up the slope, from each face's normal, so tile courses follow all four
+  faces of a hip roof (a triplanar top projection would run them up the slope on two faces)
+- **UV**: with a derivative-based tangent frame, for doors, shutters, windows, tyres, seats and fabric
+
+Roughness is multiplied per texel, so glazed tiles, window panes and worn sett tops are glossy while mortar, grout and
+chipped paint stay matte. Cavity darkens the albedo in joints, cracks and grain.
+
+**Architectural detail.** Placements are cheap because `MeshBatcher` instances them, so houses carry real geometry:
+alternating long and short quoins, a three-course stepped cornice, ridge tiles along the hips, chimney caps with
+terracotta pots, eave gutters with offset downpipes, shoes and wall clips, sills, lintels with keystones,
+wrought-iron grilles, louvred shutters, corbelled balconies, flower boxes with geraniums, panelled doors with
+fanlights, thresholds, knobs and tiled house numbers, wall lanterns, and the occasional fully azulejo-clad façade.
+Decoration draws from its own RNG, so it never reshuffles the layout RNG (house sizes, floors, materials). Lamp posts
+have a granite pedestal, a column with collars, a scrolled arm and a caged lantern. The car has chrome bumpers with
+overriders, a grille, ringed headlamps, indicators, plates, mirrors, wipers, hubcaps, treaded tyres and leather seats.
+The beach has ribbed scallop and cockle shells, mussels and strands of wrack along the tide lines.
+
+**Fabric relief.** Skinned garments have no stable UVs, so `FabricShader` evaluates patterns on the *bind-pose*
+`position` attribute. That position is stable under skinning, so the weave sticks to the cloth however the character
+moves, and 2D weaves are projected on the bind-space normal. Verlet cloth uses its UVs scaled to metres instead. The
+height (in metres) becomes a normal through Mikkelsen's surface-gradient bump, unnormalised so the relief is physical.
+Each octave fades by its frequency × pixel footprint: weaves show in close-ups and never alias at distance, while the
+broad wrinkles carry the read at gameplay range.
+
 **World depth.** `ParticleSystem` keeps particles packed at the front of preallocated structure-of-arrays typed
 arrays. Spawning appends, and killing swaps the last live particle into the hole, so updates never allocate. One
 `InstancedMesh` draws every type, uploading only the live range. Emission is scaled by the global wind strength. Spray
@@ -276,8 +324,10 @@ patches, each with its own albedo and roughness.
 **Collision layers** (`config.js`): STATIC, CHARACTER, VEHICLE, DYNAMIC and BOUNDS. Invisible bounds stop only the
 player and car. Camera rays only see static geometry, and wheel rays skip the car's own chassis.
 
-**Performance.** The old town's 50 houses (about 3,000 placed parts: walls, windows, shutters, balconies, merlons)
-collapse into 26 instanced draw calls, and all 139 city colliders hang off a single fixed body. Wind streaks are fully
+**Performance.** The old town's 50 houses (about 12,000 placed parts: walls, quoins, cornices, windows, shutters,
+grilles, balconies, gutters, ridge tiles, flower boxes, merlons) collapse into about 50 instanced draw calls, and all
+139 city colliders hang off a single fixed body. Procedural textures are generated off the main thread and are
+typically ready before the first frame. Wind streaks are fully
 GPU-animated, and atmosphere particles are pooled with no per-frame allocation. The sun shadow frustum follows the
 player and is texel-snapped. Cloth sub-steps at a fixed rate. On long frames it stretches the sub-step (up to 1/40 s) so
 the frame is still simulated in real time, with pins and body colliders swept across the sub-steps; only real hitches
@@ -296,6 +346,9 @@ carry rigidly. Distant banners freeze. Rapier's inlined WASM is lazy-loaded in i
   and drive a GLTF `SkinnedMesh` with `AnimationMixer`. Use a 1D idle/walk/run blend space with synced phase and
   cross-faded clips for poses. Author the second body profile as a morph target in bind space, as `CharacterMesh` does,
   and keep the bone names so the wardrobe's capsules and pins still resolve.
+- **New material**: write a pattern in `textures/Patterns.js` (height, albedo, roughness per texel; pick `tileSize`
+  and `depth` for physically scaled normals), register it in `TextureFactory` `SETS`, and pass `map` and `detailMap`
+  to `createStylizedMaterial`, setting `triplanarScale` to 1 / tile size.
 - **Art tuning**: change `PALETTE`, `RENDER` (shadows, IBL, fog and height fog, AO, bloom, grading, LUT), `JUSANT_GRADE`,
   `WORLD.sun`, `CHARACTER` (start profile and outfit) and the per-material options in `CityBuilder._createAssets()`.
 - **Physics tuning**: `RaycastVehicle` `cfg`, `Drivetrain` options, `POSTURE`, `CharacterController` speeds and
@@ -312,3 +365,6 @@ carry rigidly. Distant banners freeze. Rapier's inlined WASM is lazy-loaded in i
   player-centred cascade, and the AO pass is screen-space (no off-screen occluders).
 - There is no TAA; SMAA plus the soft lighting keeps aliasing low, but thin geometry such as railings and straps can
   shimmer in motion.
+- The texture sets use about 75 MB of GPU memory (five 1024² sets, the rest 512² or 256², with mipmaps). Lower the sizes
+  in `TextureFactory` `SIZES` and the matching `Patterns` defaults for low-memory targets. Triplanar stone and stucco can
+  show their 2–3 m repeat on long, flat façades.

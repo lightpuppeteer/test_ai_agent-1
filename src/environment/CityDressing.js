@@ -97,6 +97,7 @@ export class CityDressing {
     this.windAt = (p, out) => wind.sample(p, out, 0.8);
 
     const S = createStylizedMaterial;
+    const tex = (n) => textures.set(n);
     this.mat = {
       leaf: S({
         name: 'IvyLeaf',
@@ -111,16 +112,43 @@ export class CityDressing {
         heightGradient: [0, 1, 0.15],
       }),
       stem: S({ name: 'IvyStem', color: 0x4f3d2b, roughness: 0.9 }),
-      rubble: S({ name: 'Rubble', color: 0xffffff, roughness: 0.92, painterly: 0.14, painterlyScale: 2 }),
+      rubble: S({
+        name: 'Rubble',
+        color: 0xffffff,
+        roughness: 0.92,
+        painterly: 0.14,
+        painterlyScale: 2,
+        detailMap: tex('stucco').detail,
+        triplanarScale: 2,
+        normalScale: 1.6,
+      }),
       crate: S({
         name: 'DressingCrate',
         color: 0x9a7048,
-        map: textures.get('wood'),
+        map: tex('wood').map,
+        detailMap: tex('wood').detail,
         triplanarScale: 1.6,
         roughness: 0.85,
       }),
-      crateBand: S({ name: 'DressingCrateBand', color: PALETTE.ironwork, roughness: 0.5, metalness: 0.6 }),
-      pot: S({ name: 'Terracotta', color: 0xb5643f, roughness: 0.8, painterly: 0.16, painterlyScale: 1.5 }),
+      crateBand: S({
+        name: 'DressingCrateBand',
+        color: PALETTE.ironwork,
+        roughness: 0.5,
+        metalness: 0.6,
+        map: tex('castIron').map,
+        detailMap: tex('castIron').detail,
+        triplanarScale: 3,
+      }),
+      pot: S({
+        name: 'Terracotta',
+        color: 0xb5643f,
+        roughness: 0.8,
+        painterly: 0.1,
+        painterlyScale: 1.5,
+        map: tex('terracotta').map,
+        detailMap: tex('terracotta').detail,
+        triplanarScale: 2,
+      }),
       plant: S({
         name: 'PotPlant',
         color: PALETTE.foliage,
@@ -128,12 +156,22 @@ export class CityDressing {
         wrap: 0.8,
         softness: 0.8,
         rim: 0.35,
-        painterly: 0.25,
+        painterly: 0.2,
         painterlyScale: 1.2,
         windSway: 0.1,
         heightGradient: [-1, 1, 0.25],
+        map: tex('leaves').map,
+        detailMap: tex('leaves').detail,
+        triplanarScale: 2.5,
       }),
-      pole: S({ name: 'FlagPole', color: PALETTE.ironwork, roughness: 0.45, metalness: 0.7 }),
+      pole: S({
+        name: 'FlagPole',
+        color: PALETTE.ironwork,
+        roughness: 0.45,
+        metalness: 0.7,
+        detailMap: tex('castIron').detail,
+        triplanarScale: 2,
+      }),
     };
     this.geo = {
       leaf: ivyLeafGeometry(),
@@ -321,6 +359,8 @@ export class CityDressing {
       rim: 0.25,
       painterly: 0.06,
       alphaTest: 0.5,
+      detailMap: this.textures.set('weave').detail,
+      detailRepeat: [10, 26],
     });
     const cloth = new VerletCloth({
       cols,
@@ -355,6 +395,8 @@ export class CityDressing {
       rim: 0.25,
       painterly: 0.06,
       alphaTest: 0.5,
+      detailMap: this.textures.set('weave').detail,
+      detailRepeat: [10, 26],
     });
     const top = m.base.y + m.height - 0.05;
     const length = 1.7;

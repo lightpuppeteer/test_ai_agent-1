@@ -25,7 +25,12 @@ export class ShoreChapter extends Chapter {
     for (const it of this.environment.interactables) this.interactions.register(it);
     this.interactions.onFocusChange((it) => hud.setPrompt(it));
 
-    this.vehicles = new VehicleSystem({ physics, interactions: this.interactions, parent: this.root });
+    this.vehicles = new VehicleSystem({
+      physics,
+      interactions: this.interactions,
+      parent: this.root,
+      textures: this.environment.textures,
+    });
     const promenadeY = WORLD.promenade.height;
     this.vehicles.spawnCar(new THREE.Vector3(-8, promenadeY + 0.75, -48.6), Math.PI / 2);
 

@@ -16,7 +16,10 @@ import { heightFogUniforms } from '../lighting/ShaderPatches.js';
  *  2. Albedo: low-frequency domain-warped "brush" noise in world space and an
  *     optional local-height gradient (fake contact darkening).
  *  3. Optional world-space triplanar texturing (no stretching on scaled
- *     instanced boxes, arches, roofs).
+ *     instanced boxes, arches), roof-plane mapping (tile courses follow
+ *     each roof face) or plain UVs — for the albedo *and* a packed detail
+ *     map (normal XY, roughness factor, cavity; see textures/TextureSynth.js)
+ *     that adds relief, varied glossiness and baked micro-occlusion.
  *  4. Optional per-vertex baked AO (`aAO`, see lighting/VertexAO.js) applied
  *     to indirect diffuse + specular occlusion, like an aoMap.
  *  5. Sky/sun rim light, optional vertex wind sway, height fog.
@@ -31,6 +34,11 @@ export function createStylizedMaterial({
   metalness = 0,
   emissive = 0x000000,
   triplanarScale = 0, // >0 enables triplanar mapping (texture repeats per metre)
+  roofMapping = false, // with triplanarScale: map along each roof plane instead
+  detailMap = null, // packed detail texture (RG normal, B roughness/2, A cavity)
+  normalScale = 1, // detail normal strength
+  cavity = 0.7, // how much the detail cavity darkens albedo
+  detailRepeat = [1, 1], // UV mode: detail repeats per map UV unit
   wrap = 0.45, // wrapped-diffuse amount (0 = Lambert)
   softness = 0.55, // ramp width; smaller = flatter, more "cel" lighting
   rim = 0.16,
@@ -74,7 +82,9 @@ export function createStylizedMaterial({
   }
 
   material.defines = { ...(material.defines ?? {}), STY_HEIGHT_FOG: '', ...defines };
-  if (triplanarScale > 0 && map) material.defines.STY_TRIPLANAR = '';
+  const worldMapped = triplanarScale > 0 && (map || detailMap);
+  if (worldMapped) material.defines[roofMapping ? 'STY_ROOFMAP' : 'STY_TRIPLANAR'] = '';
+  if (detailMap && (worldMapped || map)) material.defines.STY_DETAIL = '';
   if (windSway > 0) material.defines.STY_WIND = '';
   if (vertexAO) material.defines.STY_VERTEX_AO = '';
 
@@ -88,6 +98,10 @@ export function createStylizedMaterial({
     uStyTriScale: { value: triplanarScale },
     uStyWindSway: { value: windSway },
     uStyAOIntensity: { value: aoIntensity },
+    uStyDetail: { value: detailMap },
+    uStyNormalScale: { value: normalScale },
+    uStyCavity: { value: cavity },
+    uStyDetailRepeat: { value: new THREE.Vector2(...detailRepeat) },
     ...uniforms,
   };
   material.userData.stylizedUniforms = local;
@@ -98,7 +112,7 @@ export function createStylizedMaterial({
     patchStylizedFragment(shader);
     patch?.(shader);
   };
-  material.customProgramCacheKey = () => `stylized-pbr-v2|${cacheKey}`;
+  material.customProgramCacheKey = () => `stylized-pbr-v3|${cacheKey}`;
   return material;
 }
 
@@ -191,13 +205,55 @@ export function patchStylizedFragment(shader) {
       varying float vStyLocalY;
       #ifdef STY_VERTEX_AO
         varying float vStyAO;
+      #endif
+      #ifdef STY_DETAIL
+        uniform sampler2D uStyDetail;
+        uniform float uStyNormalScale;
+        uniform float uStyCavity;
+        uniform vec2 uStyDetailRepeat;
+      #endif
+      #ifdef STY_ROOFMAP
+        // Roof-plane mapping: u runs along the eave, v up the slope (metres),
+        // so tile courses follow every face of a hip roof.
+        vec2 styRoofUV(vec3 n, vec3 p, out vec3 T, out vec3 B) {
+          vec2 h = n.xz;
+          float hl = max(length(h), 1e-3);
+          h /= hl;
+          T = vec3(-h.y, 0.0, h.x);
+          B = normalize(cross(n, T));
+          if (B.y < 0.0) B = -B;
+          return vec2(dot(p.xz, T.xz), p.y / max(hl, 0.25));
+        }
+      #endif
+      #if defined(STY_DETAIL) && !defined(STY_TRIPLANAR) && !defined(STY_ROOFMAP)
+        // Tangent frame from screen-space derivatives (no tangent attribute needed).
+        mat3 styTangentFrame(vec3 eyePos, vec3 n, vec2 uv) {
+          vec3 q0 = dFdx(eyePos);
+          vec3 q1 = dFdy(eyePos);
+          vec2 st0 = dFdx(uv);
+          vec2 st1 = dFdy(uv);
+          vec3 q1perp = cross(q1, n);
+          vec3 q0perp = cross(n, q0);
+          vec3 T = q1perp * st0.x + q0perp * st1.x;
+          vec3 B = q1perp * st0.y + q0perp * st1.y;
+          float det = max(dot(T, T), dot(B, B));
+          float scale = det == 0.0 ? 0.0 : inversesqrt(det);
+          return mat3(T * scale, B * scale, n);
+        }
       #endif`,
     )
     .replace(
       '#include <map_fragment>',
       /* glsl */ `
+      #ifdef STY_ROOFMAP
+        vec3 styRoofT;
+        vec3 styRoofB;
+        vec2 styRoofCoord = styRoofUV(normalize(vStyWorldNormal), vStyWorldPos, styRoofT, styRoofB) * uStyTriScale;
+      #endif
       #ifdef USE_MAP
-        #ifdef STY_TRIPLANAR
+        #if defined(STY_ROOFMAP)
+          vec4 sampledDiffuseColor = texture2D(map, styRoofCoord);
+        #elif defined(STY_TRIPLANAR)
           vec3 styBw = pow(abs(normalize(vStyWorldNormal)), vec3(4.0));
           styBw /= (styBw.x + styBw.y + styBw.z);
           vec3 styTp = vStyWorldPos * uStyTriScale;
@@ -223,7 +279,69 @@ export function patchStylizedFragment(shader) {
         // Fake baked contact occlusion: darker (and slightly cooler) near the base.
         float hg = smoothstep(uStyHeightGrad.x, uStyHeightGrad.y, vStyLocalY);
         diffuseColor.rgb *= mix(vec3(1.0 - uStyHeightGrad.z) * vec3(0.95, 0.98, 1.04), vec3(1.0), hg);
-      }`,
+      }
+      #ifdef STY_DETAIL
+        vec4 styDet;
+        vec3 styDetW = vec3(0.0); // world-space normal offset (triplanar / roof)
+        vec2 styDetT = vec2(0.0); // tangent-space XY (UV mode)
+        {
+          #if defined(STY_ROOFMAP)
+            styDet = texture2D(uStyDetail, styRoofCoord);
+            vec2 tn = styDet.rg * 2.0 - 1.0;
+            styDetW = styRoofT * tn.x + styRoofB * tn.y;
+          #elif defined(STY_TRIPLANAR)
+            vec3 nW = normalize(vStyWorldNormal);
+            vec3 bw = pow(abs(nW), vec3(4.0));
+            bw /= (bw.x + bw.y + bw.z);
+            vec3 tp = vStyWorldPos * uStyTriScale;
+            vec4 dX = texture2D(uStyDetail, tp.zy);
+            vec4 dY = texture2D(uStyDetail, tp.xz);
+            vec4 dZ = texture2D(uStyDetail, tp.xy);
+            vec2 tX = dX.rg * 2.0 - 1.0;
+            vec2 tY = dY.rg * 2.0 - 1.0;
+            vec2 tZ = dZ.rg * 2.0 - 1.0;
+            // Each projection's tangent axes are world axes (no mirroring),
+            // so the height gradient maps straight onto the surface (UDN blend).
+            styDetW = vec3(0.0, tX.y, tX.x) * bw.x + vec3(tY.x, 0.0, tY.y) * bw.y + vec3(tZ.x, tZ.y, 0.0) * bw.z;
+            styDet = dX * bw.x + dY * bw.y + dZ * bw.z;
+          #else
+            styDet = texture2D(uStyDetail, vMapUv * uStyDetailRepeat);
+            styDetT = styDet.rg * 2.0 - 1.0;
+          #endif
+        }
+        diffuseColor.rgb *= mix(1.0, styDet.a, uStyCavity);
+      #endif`,
+    )
+    .replace(
+      '#include <roughnessmap_fragment>',
+      /* glsl */ `#include <roughnessmap_fragment>
+      #ifdef STY_DETAIL
+        roughnessFactor = clamp(roughnessFactor * styDet.b * 2.0, 0.03, 1.0);
+      #endif`,
+    )
+    .replace(
+      '#include <normal_fragment_maps>',
+      /* glsl */ `#include <normal_fragment_maps>
+      #ifdef STY_DETAIL
+        #if defined(STY_ROOFMAP) || defined(STY_TRIPLANAR)
+        {
+          vec3 nW = normalize(vStyWorldNormal);
+          #ifdef DOUBLE_SIDED
+            nW *= faceDirection;
+          #endif
+          normal = normalize((viewMatrix * vec4(normalize(nW + styDetW * uStyNormalScale), 0.0)).xyz);
+        }
+        #else
+        {
+          mat3 tbn = styTangentFrame(-vViewPosition, normal, vMapUv * uStyDetailRepeat);
+          #ifdef DOUBLE_SIDED
+            tbn[0] *= faceDirection;
+            tbn[1] *= faceDirection;
+          #endif
+          normal = normalize(tbn * vec3(styDetT * uStyNormalScale, 1.0));
+        }
+        #endif
+      #endif`,
     )
     .replace(
       '#include <lights_physical_pars_fragment>',
@@ -257,7 +375,7 @@ export function patchStylizedFragment(shader) {
       '#include <lights_fragment_end>',
       /* glsl */ `#include <lights_fragment_end>
       {
-        vec3 wn = normalize(vStyWorldNormal);
+        vec3 wn = inverseTransformDirection(normal, viewMatrix); // includes detail relief
         vec3 wv = normalize(cameraPosition - vStyWorldPos);
         float fres = pow(1.0 - clamp(dot(wn, wv), 0.0, 1.0), 4.0);
         float backLit = pow(clamp(dot(-wv, uSunDir), 0.0, 1.0), 3.0);
