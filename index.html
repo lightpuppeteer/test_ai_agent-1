@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shore Chapters</title>
+    <link rel="stylesheet" href="/src/ui/hud.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="loading" class="loading">
+      <div class="loading__title">Shore Chapters</div>
+      <div class="loading__status" id="loading-status">Waking the tide…</div>
+    </div>
+
+    <div id="hud" class="hud" hidden>
+      <div class="hud__prompt" id="hud-prompt" hidden>
+        <span class="hud__key" id="hud-prompt-key">E</span>
+        <span id="hud-prompt-label">Interact</span>
+      </div>
+
+      <div class="hud__vehicle" id="hud-vehicle" hidden>
+        <div class="hud__speed"><span id="hud-speed">0</span><small>km/h</small></div>
+        <div class="hud__gear">Gear <span id="hud-gear">N</span></div>
+        <div class="hud__rpm"><div class="hud__rpm-fill" id="hud-rpm"></div></div>
+      </div>
+
+      <div class="hud__debug" id="hud-debug"></div>
+
+      <div class="hud__help" id="hud-help">
+        <b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>E</b> interact · <b>Drag</b> look ·
+        <b>Wheel</b> zoom<br />
+        In car: <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>E</b> exit<br />
+        <b>P</b> physics debug · <b>H</b> hide help
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
