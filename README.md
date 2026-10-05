@@ -31,6 +31,7 @@ Portugal. It covers:
 |---|---|---|
 | ![City](docs/screenshots/02-city-from-promenade.jpg) | ![Plaza](docs/screenshots/03-plaza-townhall.jpg) | ![Shore](docs/screenshots/04-shore-ocean.jpg) |
 | ![Sit](docs/screenshots/05-sit-bench.jpg) | ![Lie down](docs/screenshots/06-lay-towel.jpg) | ![Enter car](docs/screenshots/07a-entering-car.jpg) |
+| ![Façade detail](docs/screenshots/09-facade-detail.jpg) | ![Rooftops](docs/screenshots/10-rooftops.jpg) | ![Car detail](docs/screenshots/11-car-detail.jpg) |
 
 ![Wardrobe presets on the feminine (top) and masculine (bottom) body profiles: explorer, skirt & shirt, silver dress, swimwear](docs/screenshots/outfits.jpg)
 
