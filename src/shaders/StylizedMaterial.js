@@ -1,55 +1,82 @@
 import * as THREE from 'three';
 import { sharedUniforms, SHARED_UNIFORMS_GLSL, NOISE_GLSL } from './common.glsl.js';
+import { heightFogUniforms } from '../lighting/ShaderPatches.js';
 
 /**
- * Stylised "baked-light" material built by patching MeshLambertMaterial with
- * `onBeforeCompile`. Patching (instead of a from-scratch ShaderMaterial) keeps
- * everything three.js gives us for free: shadows, fog, instancing, skinning,
- * hemisphere light, tone mapping.
+ * Stylised PBR material: MeshStandardMaterial patched with `onBeforeCompile`.
  *
- * What the patch changes:
- *  1. Direct light → wrapped diffuse + soft ramp: wide, flat lit areas and a
- *     smooth painted terminator with a warm band (no harsh PBR falloff).
- *  2. Albedo → low-frequency domain-warped "brush" noise in world space plus
- *     an optional local-height gradient that fakes baked contact occlusion.
- *  3. Optional world-space triplanar texturing (no UV stretching on boxes,
- *     arches, roofs — ideal for procedural architecture).
- *  4. Sky-tinted rim/fresnel that turns sun-coloured when back-lit.
- *  5. Optional vertex wind sway driven by the global wind uniforms.
+ * Patching keeps everything three.js provides — shadows, IBL from
+ * `scene.environment` (diffuse irradiance + roughness-correct specular),
+ * fog, instancing, skinning, morph targets, tone mapping — and only bends
+ * the parts that make it look painted:
  *
- * All variants are expressed through `defines`, so three.js' program cache
- * keys stay correct and identical variants share one GPU program.
+ *  1. Direct light: GGX specular is untouched, but the *diffuse* term uses a
+ *     wrapped, soft ramp with a warm terminator band (baked, low-frequency
+ *     shading instead of a hard Lambert falloff).
+ *  2. Albedo: low-frequency domain-warped "brush" noise in world space and an
+ *     optional local-height gradient (fake contact darkening).
+ *  3. Optional world-space triplanar texturing (no stretching on scaled
+ *     instanced boxes, arches, roofs).
+ *  4. Optional per-vertex baked AO (`aAO`, see lighting/VertexAO.js) applied
+ *     to indirect diffuse + specular occlusion, like an aoMap.
+ *  5. Sky/sun rim light, optional vertex wind sway, height fog.
+ *
+ * Variants are expressed with `defines` so program caching stays correct.
+ * `patch(shader)` lets derived materials (sand, garments) inject more code.
  */
 export function createStylizedMaterial({
   color = 0xffffff,
   map = null,
+  roughness = 0.88,
+  metalness = 0,
+  emissive = 0x000000,
   triplanarScale = 0, // >0 enables triplanar mapping (texture repeats per metre)
   wrap = 0.45, // wrapped-diffuse amount (0 = Lambert)
   softness = 0.55, // ramp width; smaller = flatter, more "cel" lighting
-  rim = 0.22,
+  rim = 0.16,
   painterly = 0.1, // albedo brush-noise strength
   painterlyScale = 0.35, // brush noise frequency (1/m)
   heightGradient = null, // [yStart, yEnd, darkenAmount] in geometry space
   windSway = 0, // metres of sway at heightGradient top (foliage, cloth props)
+  vertexAO = false, // use the baked `aAO` attribute
+  aoIntensity = 1,
+  envMapIntensity = 1,
   side = THREE.FrontSide,
   transparent = false,
   opacity = 1,
   vertexColors = false,
+  polygonOffset = false,
+  alphaTest = 0,
+  uniforms = {}, // extra uniforms for `patch`
+  defines = {},
+  patch = null, // (shader) => void, runs after the stylised patch
+  cacheKey = '', // must differ whenever `patch` produces different code
   name = 'Stylized',
 } = {}) {
-  const material = new THREE.MeshLambertMaterial({
+  const material = new THREE.MeshStandardMaterial({
     color,
     map,
+    roughness,
+    metalness,
+    emissive,
+    envMapIntensity,
     side,
     transparent,
     opacity,
     vertexColors,
+    alphaTest,
     name,
   });
+  if (polygonOffset) {
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = -1;
+    material.polygonOffsetUnits = -2;
+  }
 
-  material.defines = material.defines ?? {};
+  material.defines = { ...(material.defines ?? {}), STY_HEIGHT_FOG: '', ...defines };
   if (triplanarScale > 0 && map) material.defines.STY_TRIPLANAR = '';
   if (windSway > 0) material.defines.STY_WIND = '';
+  if (vertexAO) material.defines.STY_VERTEX_AO = '';
 
   const local = {
     uStyWrap: { value: wrap },
@@ -60,15 +87,18 @@ export function createStylizedMaterial({
     uStyHeightGrad: { value: new THREE.Vector3(...(heightGradient ?? [0, 1, 0])) },
     uStyTriScale: { value: triplanarScale },
     uStyWindSway: { value: windSway },
+    uStyAOIntensity: { value: aoIntensity },
+    ...uniforms,
   };
   material.userData.stylizedUniforms = local;
 
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, sharedUniforms, local);
+    Object.assign(shader.uniforms, sharedUniforms, heightFogUniforms, local);
     patchStylizedVertex(shader);
     patchStylizedFragment(shader);
+    patch?.(shader);
   };
-  material.customProgramCacheKey = () => 'stylized-v1';
+  material.customProgramCacheKey = () => `stylized-pbr-v2|${cacheKey}`;
   return material;
 }
 
@@ -83,12 +113,19 @@ export function patchStylizedVertex(shader) {
       uniform vec3 uStyHeightGrad;
       varying vec3 vStyWorldPos;
       varying vec3 vStyWorldNormal;
-      varying float vStyLocalY;`,
+      varying float vStyLocalY;
+      #ifdef STY_VERTEX_AO
+        attribute float aAO;
+        varying float vStyAO;
+      #endif`,
     )
     .replace(
       '#include <begin_vertex>',
       /* glsl */ `#include <begin_vertex>
       vStyLocalY = transformed.y;
+      #ifdef STY_VERTEX_AO
+        vStyAO = aAO;
+      #endif
       #ifdef STY_WIND
       {
         // Sway grows with height inside the object; phase varies per world position
@@ -101,6 +138,9 @@ export function patchStylizedVertex(shader) {
         float ph = dot(swayOrigin.xz, vec2(0.21, 0.17));
         float gust = sin(uWindPhase * 1.7 + ph) * 0.6 + sin(uWindPhase * 3.9 + ph * 2.3 + transformed.x) * 0.25;
         vec3 windLocal = normalize(transpose(mat3(modelMatrix)) * uWindDir);
+        #ifdef USE_INSTANCING
+          windLocal = normalize(transpose(mat3(instanceMatrix)) * windLocal);
+        #endif
         transformed += windLocal * (uStyWindSway * h * h * uWindStrength * (0.65 + gust));
       }
       #endif`,
@@ -130,7 +170,7 @@ export function patchStylizedVertex(shader) {
     );
 }
 
-/** Fragment patch — lighting model, brush noise, triplanar, rim. */
+/** Fragment patch — stylised direct diffuse, brush noise, triplanar, baked AO, rim. */
 export function patchStylizedFragment(shader) {
   shader.fragmentShader = shader.fragmentShader
     .replace(
@@ -145,9 +185,13 @@ export function patchStylizedFragment(shader) {
       uniform float uStyPainterlyScale;
       uniform vec3 uStyHeightGrad;
       uniform float uStyTriScale;
+      uniform float uStyAOIntensity;
       varying vec3 vStyWorldPos;
       varying vec3 vStyWorldNormal;
-      varying float vStyLocalY;`,
+      varying float vStyLocalY;
+      #ifdef STY_VERTEX_AO
+        varying float vStyAO;
+      #endif`,
     )
     .replace(
       '#include <map_fragment>',
@@ -182,36 +226,32 @@ export function patchStylizedFragment(shader) {
       }`,
     )
     .replace(
-      '#include <lights_lambert_pars_fragment>',
-      /* glsl */ `
-      varying vec3 vViewPosition;
-      struct LambertMaterial {
-        vec3 diffuseColor;
-        float specularStrength;
-      };
-      // Accumulated, shadowed sun light (for sparkles / wet sheen in derived materials).
+      '#include <lights_physical_pars_fragment>',
+      /* glsl */ `#include <lights_physical_pars_fragment>
+      // Accumulated, shadowed sun light (sparkles / wet sheen in derived materials).
       vec3 styDirect = vec3(0.0);
-      void RE_Direct_Lambert(const in IncidentLight directLight, const in vec3 geometryPosition,
+      // Physical GGX specular + stylised wrapped diffuse. (Clearcoat/sheen
+      // are not used by stylised materials and are intentionally omitted.)
+      void RE_Direct_Stylized(const in IncidentLight directLight, const in vec3 geometryPosition,
           const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal,
-          const in LambertMaterial material, inout ReflectedLight reflectedLight) {
+          const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
         float ndl = dot(geometryNormal, directLight.direction);
+        float dotNL = saturate(ndl);
+        vec3 specularBRDF = BRDF_GGX(directLight.direction, geometryViewDir, geometryNormal, material);
+        reflectedLight.directSpecular += dotNL * directLight.color * specularBRDF * material.multiScatteringCompensation;
+        vec3 halfDir = normalize(directLight.direction + geometryViewDir);
+        vec3 F = F_Schlick(material.specularColor, material.specularF90, saturate(dot(geometryViewDir, halfDir)));
         float wrapped = clamp((ndl + uStyWrap) / (1.0 + uStyWrap), 0.0, 1.0);
         // Soft ramp: lit side plateaus early (baked look), terminator stays smooth.
         float ramp = mix(wrapped, smoothstep(0.0, uStySoftness, wrapped), 0.75);
-        // Warm band hugging the terminator, like light scattering in stucco.
+        // Warm band hugging the terminator, like light scattering in stucco/skin.
         float band = smoothstep(0.0, 0.18, wrapped) * (1.0 - smoothstep(0.18, 0.5, wrapped));
         vec3 irradiance = directLight.color * (ramp + band * vec3(0.16, 0.06, -0.02));
-        reflectedLight.directDiffuse += irradiance * BRDF_Lambert(material.diffuseColor);
-        styDirect += directLight.color * clamp(ndl, 0.0, 1.0);
+        reflectedLight.directDiffuse += irradiance * BRDF_Lambert(material.diffuseContribution) * (1.0 - F);
+        styDirect += directLight.color * dotNL;
       }
-      void RE_IndirectDiffuse_Lambert(const in vec3 irradiance, const in vec3 geometryPosition,
-          const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal,
-          const in LambertMaterial material, inout ReflectedLight reflectedLight) {
-        reflectedLight.indirectDiffuse += irradiance * BRDF_Lambert(material.diffuseColor);
-      }
-      #define RE_Direct RE_Direct_Lambert
-      #define RE_IndirectDiffuse RE_IndirectDiffuse_Lambert
-      `,
+      #undef RE_Direct
+      #define RE_Direct RE_Direct_Stylized`,
     )
     .replace(
       '#include <lights_fragment_end>',
@@ -224,5 +264,19 @@ export function patchStylizedFragment(shader) {
         vec3 rimCol = mix(uSkyHorizon * 0.6, uSunColor * 1.4, backLit);
         reflectedLight.indirectDiffuse += fres * uStyRim * rimCol * (0.5 + 0.5 * clamp(wn.y + 0.6, 0.0, 1.0));
       }`,
+    )
+    .replace(
+      '#include <aomap_fragment>',
+      /* glsl */ `#include <aomap_fragment>
+      #ifdef STY_VERTEX_AO
+      {
+        float styAO = mix(1.0, vStyAO, uStyAOIntensity);
+        reflectedLight.indirectDiffuse *= styAO;
+        float styNV = saturate(dot(geometryNormal, geometryViewDir));
+        reflectedLight.indirectSpecular *= computeSpecularOcclusion(styNV, styAO, material.roughness);
+        // A touch of direct occlusion sells the baked look in deep corners.
+        reflectedLight.directDiffuse *= mix(1.0, styAO, 0.3);
+      }
+      #endif`,
     );
 }

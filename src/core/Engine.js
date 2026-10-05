@@ -4,7 +4,12 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { LUTPass } from 'three/addons/postprocessing/LUTPass.js';
 import { GradingShader } from '../shaders/grading.glsl.js';
+import { StylizedAOPass } from '../lighting/StylizedAOPass.js';
+import { createJusantLUT } from '../lighting/JusantLUT.js';
+import { installShaderPatches } from '../lighting/ShaderPatches.js';
 import { PHYSICS, RENDER } from '../config.js';
 
 /**
@@ -21,6 +26,16 @@ import { PHYSICS, RENDER } from '../config.js';
  * interpolated between the last two physics states (see PhysicsWorld), and
  * `renderTime` is the matching interpolated simulation time so that shaders
  * (e.g. the Gerstner ocean) stay in lock-step with physics (buoyancy).
+ *
+ * Post-processing (all in one EffectComposer):
+ *
+ *   RenderPass (HDR, + depth texture)
+ *   → StylizedAOPass   depth-reconstructed ambient obscurance (linear HDR)
+ *   → UnrealBloomPass  very soft, high threshold (sun, glints, lanterns)
+ *   → GradingPass      saturation/contrast, vignette, grain (linear HDR)
+ *   → OutputPass       tone mapping (Neutral) + sRGB
+ *   → LUTPass          Jusant warm/cool creative grade (display space)
+ *   → SMAAPass         edge anti-aliasing on the final image
  */
 export class Engine {
   /**
@@ -32,9 +47,19 @@ export class Engine {
     this.container = container;
     this.physics = physics;
 
+    // Global shader chunk overrides (soft shadows, height fog) must be in
+    // place before any material compiles.
+    const S = RENDER.shadow;
+    installShaderPatches({
+      shadowTaps: S.taps,
+      shadowDepthRange: S.far - S.near,
+      shadowTexelWorld: (2 * RENDER.shadowFrustum) / RENDER.shadowMapSize,
+      lightAngle: S.lightAngle,
+    });
+
     // --- Renderer -----------------------------------------------------------
     this.renderer = new THREE.WebGLRenderer({
-      antialias: false, // MSAA happens in the composer's render target
+      antialias: false, // SMAA runs at the end of the composer chain
       powerPreference: 'high-performance',
       stencil: false,
     });
@@ -46,7 +71,9 @@ export class Engine {
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = RENDER.exposure;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap; // soft via light.shadow.radius
+    // three r186 removed PCFSoftShadowMap (it now logs a warning and falls back
+    // to PCF). Softness comes from our contact-hardening PCF patch instead.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(this.renderer.domElement);
 
     // --- Scene & camera -----------------------------------------------------
@@ -54,37 +81,7 @@ export class Engine {
     this.camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 2000);
     this.camera.position.set(0, 6, -30);
 
-    // --- Post-processing ----------------------------------------------------
-    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, {
-      type: THREE.HalfFloatType,
-      samples: RENDER.msaaSamples,
-    });
-    this.composer = new EffectComposer(this.renderer, rt);
-    this.composer.setPixelRatio(this.renderer.getPixelRatio());
-    this.composer.setSize(container.clientWidth, container.clientHeight);
-
-    this.renderPass = new RenderPass(this.scene, this.camera);
-    this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(container.clientWidth, container.clientHeight),
-      RENDER.bloom.strength,
-      RENDER.bloom.radius,
-      RENDER.bloom.threshold,
-    );
-    this.gradingPass = new ShaderPass(GradingShader);
-    const g = RENDER.grading;
-    const gu = this.gradingPass.uniforms;
-    gu.uSaturation.value = g.saturation;
-    gu.uContrast.value = g.contrast;
-    gu.uShadowTint.value = new THREE.Vector3(...g.shadowTint);
-    gu.uHighlightTint.value = new THREE.Vector3(...g.highlightTint);
-    gu.uVignette.value = g.vignette;
-    gu.uGrain.value = g.grain;
-
-    this.composer.addPass(this.renderPass);
-    this.composer.addPass(this.bloomPass);
-    this.composer.addPass(this.gradingPass);
-    this.composer.addPass(new OutputPass()); // tone mapping + sRGB
+    this._createPostProcessing(container.clientWidth, container.clientHeight);
 
     // --- Loop state ---------------------------------------------------------
     this.systems = [];
@@ -108,6 +105,50 @@ export class Engine {
       // Drop the time spent in a background tab instead of simulating it.
       this._lastNow = -1;
     });
+  }
+
+  _createPostProcessing(width, height) {
+    // Composer targets carry a depth texture so the AO pass can read the
+    // beauty pass depth (shader-displaced geometry included).
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, {
+      type: THREE.HalfFloatType,
+      depthTexture: new THREE.DepthTexture(size.x, size.y),
+    });
+    this.composer = new EffectComposer(this.renderer, rt);
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
+
+    const P = (this.passes = {});
+    P.render = new RenderPass(this.scene, this.camera);
+    P.ao = new StylizedAOPass(this.camera, RENDER.ao);
+    P.ao.enabled = RENDER.ao.enabled;
+    P.bloom = new UnrealBloomPass(
+      new THREE.Vector2(width, height),
+      RENDER.bloom.strength,
+      RENDER.bloom.radius,
+      RENDER.bloom.threshold,
+    );
+    P.grading = new ShaderPass(GradingShader);
+    const g = RENDER.grading;
+    const gu = P.grading.uniforms;
+    gu.uSaturation.value = g.saturation;
+    gu.uContrast.value = g.contrast;
+    gu.uShadowTint.value = new THREE.Vector3(...g.shadowTint);
+    gu.uHighlightTint.value = new THREE.Vector3(...g.highlightTint);
+    gu.uVignette.value = g.vignette;
+    gu.uGrain.value = g.grain;
+    P.output = new OutputPass(); // tone mapping + sRGB
+    P.lut = new LUTPass({ lut: createJusantLUT(RENDER.lut.size), intensity: RENDER.lut.intensity });
+    P.lut.enabled = RENDER.lut.enabled;
+    P.smaa = new SMAAPass();
+    P.smaa.enabled = RENDER.antialias === 'smaa';
+
+    for (const pass of [P.render, P.ao, P.bloom, P.grading, P.output, P.lut, P.smaa]) this.composer.addPass(pass);
+    this.composer.setSize(width, height);
+    // Backwards-compatible aliases.
+    this.renderPass = P.render;
+    this.bloomPass = P.bloom;
+    this.gradingPass = P.grading;
   }
 
   /**

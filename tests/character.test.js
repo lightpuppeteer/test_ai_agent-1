@@ -243,6 +243,6 @@ test('character FSM end-to-end', async (t) => {
   });
 
   await t.test('secondary motion (cloth) stays finite', () => {
-    for (const v of ch.cloth.cloak.pos) assert.ok(Number.isFinite(v));
+    for (const v of ch.wardrobe.items.get('cloak').cloth.pos) assert.ok(Number.isFinite(v));
   });
 });

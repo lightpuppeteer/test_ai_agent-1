@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { PALETTE, WORLD, SURFACE, GROUPS } from '../config.js';
 import { createStylizedMaterial } from '../shaders/StylizedMaterial.js';
 import { MeshBatcher } from './MeshBatcher.js';
+import { bakeVertexAO } from '../lighting/VertexAO.js';
+import { enableHeightFog } from '../lighting/ShaderPatches.js';
 import { Interactable, Anchor, INTERACTION_TYPE, staticRoot } from '../interaction/Interactable.js';
 
 /*
@@ -79,6 +81,11 @@ export class CityBuilder {
     this.group.name = 'City';
     this.batch = new MeshBatcher();
     this.interactables = [];
+    this.groundPatches = [];
+    /** Street-facing walls, for set dressing (ivy, rubble, banners…). */
+    this.facades = [];
+    this.bannerMounts = [];
+    this.pennantMounts = [];
     this.rng = mulberry(7);
 
     this._createAssets();
@@ -114,8 +121,25 @@ export class CityBuilder {
         triplanarScale: 0.45,
         heightGradient: [0, 3, 0.15],
       }),
-      cobbles: S({ name: 'Cobbles', color: PALETTE.granite, map: T.get('cobbles'), triplanarScale: 0.6, wrap: 0.6 }),
-      paving: S({ name: 'Paving', color: 0xc9bca6, map: ashlar, triplanarScale: 0.33, wrap: 0.6 }),
+      // Ground variants that read the baked per-vertex AO (see bakeGroundAO).
+      cobblesAO: S({
+        name: 'CobblesAO',
+        color: PALETTE.granite,
+        map: T.get('cobbles'),
+        triplanarScale: 0.6,
+        wrap: 0.6,
+        roughness: 0.82,
+        vertexAO: true,
+      }),
+      pavingAO: S({
+        name: 'PavingAO',
+        color: 0xc9bca6,
+        map: ashlar,
+        triplanarScale: 0.33,
+        wrap: 0.6,
+        roughness: 0.85,
+        vertexAO: true,
+      }),
       roof: S({
         name: 'RoofClay',
         color: PALETTE.roofClay,
@@ -143,7 +167,9 @@ export class CityBuilder {
         windSway: 0.18,
         heightGradient: [-1, 1, 0.3],
       }),
-      lantern: new THREE.MeshBasicMaterial({ name: 'Lantern', color: new THREE.Color(2.6, 1.9, 1.1), fog: true }),
+      lantern: enableHeightFog(
+        new THREE.MeshBasicMaterial({ name: 'Lantern', color: new THREE.Color(2.6, 1.9, 1.1), fog: true }),
+      ),
     };
   }
 
@@ -166,6 +192,16 @@ export class CityBuilder {
     return this;
   }
 
+  /**
+   * Bakes per-vertex AO into every walkable ground patch by ray casting the
+   * finished collider set (houses, arcades, benches, lamp posts, kerbs, and
+   * any set dressing added after build()). Call once the level is complete.
+   */
+  bakeGroundAO() {
+    this.physics.updateQueries();
+    for (const mesh of this.groundPatches) bakeVertexAO(mesh.geometry, this.physics, { samples: 14, radius: 2.8 });
+  }
+
   // ---------------------------------------------------------------------------
   // Ground
   // ---------------------------------------------------------------------------
@@ -183,10 +219,12 @@ export class CityBuilder {
     this.group.add(slab);
     this.colliders.addBoxFromMesh(slab);
 
-    // Cobbled road lane (visual only, sits 1 cm proud of the slab).
-    this.batch.place(this.geo.box, this.mat.cobbles, _p.set(0, P.height + 0.005, -48.5), null, _s.set(width, 0.02, 6), {
-      castShadow: false,
-    });
+    // Walkable top surfaces as subdivided patches (visual only; the slab is
+    // the collider) so they can carry baked AO from the balustrade, lamps,
+    // benches and house fronts: cobbled road + paved footpath.
+    const flat = () => P.height + 0.003;
+    this._groundPatch(-width / 2, width / 2, P.zLand, -45.55, flat, this.mat.cobblesAO, { collide: false });
+    this._groundPatch(-width / 2, width / 2, -45.25, P.zSea, flat, this.mat.pavingAO, { collide: false });
     // Granite kerb between road and footpath.
     this.batch.place(this.geo.box, this.mat.granite, _p.set(0, P.height + 0.06, -45.4), null, _s.set(width, 0.12, 0.3));
 
@@ -225,30 +263,29 @@ export class CityBuilder {
 
   _groundPatches() {
     // Plaza: subdivided, slanted & twisted → trimesh collider from the render mesh.
-    this._groundPatch(PLAZA.x0, PLAZA.x1, PLAZA.zNorth, PLAZA.zSouth, 24, 28, plazaHeight, this.mat.cobbles);
+    this._groundPatch(PLAZA.x0, PLAZA.x1, PLAZA.zNorth, PLAZA.zSouth, plazaHeight, this.mat.cobblesAO);
     this._groundPatch(
       NORTH_STREET.x0 - 0.5,
       NORTH_STREET.x1 + 0.5,
       NORTH_STREET.z1,
       NORTH_STREET.z0 + 0.5,
-      3,
-      22,
       northStreetHeight,
-      this.mat.cobbles,
+      this.mat.cobblesAO,
     );
     this._groundPatch(
       WEST_STREET.x1,
       WEST_STREET.x0 + 0.5,
       WEST_STREET.z0 - 0.5,
       WEST_STREET.z1 + 0.5,
-      24,
-      3,
       westStreetHeight,
-      this.mat.cobbles,
+      this.mat.cobblesAO,
     );
   }
 
-  _groundPatch(x0, x1, z0, z1, segX, segZ, heightFn, material) {
+  /** Subdivided (~1 m) ground surface following `heightFn`; trimesh collider unless `collide: false`. */
+  _groundPatch(x0, x1, z0, z1, heightFn, material, { collide = true, cell = 1.0 } = {}) {
+    const segX = Math.max(1, Math.ceil((x1 - x0) / cell));
+    const segZ = Math.max(1, Math.ceil((z1 - z0) / cell));
     const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, segX, segZ);
     g.rotateX(-Math.PI / 2);
     g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
@@ -260,7 +297,8 @@ export class CityBuilder {
     mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
     this.group.add(mesh);
-    this.colliders.addTrimesh(g);
+    if (collide) this.colliders.addTrimesh(g);
+    this.groundPatches.push(mesh);
     return mesh;
   }
 
@@ -413,6 +451,16 @@ export class CityBuilder {
       const len = f === '+z' || f === '-z' ? w : d;
       const faceCenter = new THREE.Vector3(cx + (F.n.x * w) / 2, 0, cz + (F.n.z * d) / 2);
       const groundHere = cityGroundHeight(faceCenter.x + F.n.x, faceCenter.z + F.n.z) ?? hi;
+      this.facades.push({
+        center: faceCenter.clone().setY(groundHere),
+        normal: F.n.clone(),
+        yaw: F.yaw,
+        length: len,
+        ground: groundHere,
+        top,
+        tavern: tavern && f === '-x',
+        stone: graniteHouse,
+      });
       this._facade(faceCenter, F, len, groundHere, base, floors, floorH, shutterMat, tavern && f === '-x');
     }
   }
@@ -574,8 +622,19 @@ export class CityBuilder {
       B.place(this.geo.box, this.mat.glass, _p.set(px, base + H + 2.2, z1 + 0.09), null, _s.set(0.85, 2.25, 0.1));
       B.place(this.geo.box, this.mat.granite, _p.set(px, base + H + 2.2, z1 + 0.12), null, _s.set(0.1, 2.25, 0.06)); // mullion
     }
+    // Banner mounts between the windows: iron rods parallel to the wall;
+    // CityDressing hangs wind-driven Verlet banners from them.
+    for (let i = 0; i < arches - 1; i++) {
+      const px = x0 + pier + span + pier / 2 + i * (span + pier);
+      const top = new THREE.Vector3(px, base + H + 3.7, z1 + 0.42);
+      B.place(this.geo.box, this.mat.iron, top, null, _s.set(0.95, 0.04, 0.04));
+      B.place(this.geo.box, this.mat.iron, _p.set(px, top.y, z1 + 0.2), null, _s.set(0.04, 0.04, 0.44));
+      this.bannerMounts.push({ top, width: 0.78, length: 2.1, wall: { normal: new THREE.Vector3(0, 0, 1), z: z1 } });
+    }
     // Battlements.
     const topY = base + H + upperH;
+    for (const px of [x0 + 0.5, x1 - 0.5])
+      this.pennantMounts.push({ base: new THREE.Vector3(px, topY + 0.3, z1 - 0.5), height: 3.6 });
     B.place(this.geo.box, this.mat.granite, _p.set(cx, topY + 0.15, cz), null, _s.set(len + 0.4, 0.3, depth + 0.4));
     const merlon = (x, z) =>
       B.place(this.geo.box, this.mat.granite, _p.set(x, topY + 0.75, z), null, _s.set(0.7, 0.9, 0.7));

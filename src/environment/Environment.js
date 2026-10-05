@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { PALETTE, RENDER, WORLD } from '../config.js';
 import { sharedUniforms } from '../shaders/common.glsl.js';
+import { heightFogUniforms } from '../lighting/ShaderPatches.js';
+import { SkyIBL } from '../lighting/IBL.js';
 import { TextureFactory } from './TextureFactory.js';
 import { Sky } from './Sky.js';
 import { WindSystem } from './WindSystem.js';
@@ -10,17 +12,31 @@ import { GerstnerWaves } from './GerstnerWaves.js';
 import { Ocean } from './Ocean.js';
 import { BuoyancySystem } from './Buoyancy.js';
 import { CityBuilder, cityGroundHeight } from './CityBuilder.js';
+import { CityDressing } from './CityDressing.js';
 import { BeachProps } from './BeachProps.js';
+import { BeachDressing } from './BeachDressing.js';
+import { AtmosphereVFX } from '../vfx/AtmosphereVFX.js';
 import { sandHeight } from './Terrain.js';
 
 const _v = new THREE.Vector3();
 const _rot = new THREE.Matrix4();
 const _rotInv = new THREE.Matrix4();
+const ORIGIN = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
 
 /**
- * Environment — owns everything "world": lighting & atmosphere, sky, global
- * wind (+ particles), beach sand, Gerstner ocean + buoyancy, the Guimarães
- * old-town square and beach props. Registered as an Engine system.
+ * Environment — owns everything "world". Registered as an Engine system.
+ *
+ *   lighting     warm sun with 4096² contact-hardening soft shadows (follows
+ *                the focus, texel-snapped) + procedural sky IBL (PMREM)
+ *                instead of ambient/hemisphere lights; baked vertex AO on
+ *                walkable ground
+ *   atmosphere   gradient sky, FogExp2 horizon + height fog, global wind,
+ *                curling wind streaks, pooled instanced dust/pollen/spray
+ *   terrain      dune sand (multi-state dampness), Gerstner ocean + buoyancy
+ *   old town     Guimarães-style square + dressing (ivy, rubble, banners,
+ *                crates, planters)
+ *   beach        towels, parasols, floating props, pebbles, driftwood
  */
 export class Environment {
   /**
@@ -41,61 +57,121 @@ export class Environment {
     const { engine, physics, root } = this;
     this.textures = new TextureFactory(engine.renderer);
 
-    this._createLighting();
+    this._createSun();
+    this._createAtmosphere();
 
     this.sky = new Sky();
     root.add(this.sky.mesh);
 
     this.wind = new WindSystem();
-    this.particles = new WindParticles();
+    this.particles = new WindParticles({ motes: false });
     root.add(this.particles.group);
 
-    this.sand = new Sand(physics);
-    root.add(this.sand.mesh);
-
     this.waves = new GerstnerWaves();
+    this.sand = new Sand(physics, this.waves);
+    root.add(this.sand.mesh);
     this.ocean = new Ocean(this.waves);
     root.add(this.ocean.mesh);
     this.buoyancy = new BuoyancySystem(physics, this.waves);
 
-    this.city = new CityBuilder(physics, this.textures).build();
-    root.add(this.city.group);
+    this._buildOldTown();
+    this._buildBeach();
 
-    this.props = new BeachProps({ physics, textures: this.textures, buoyancy: this.buoyancy, parent: root }).build();
+    this.vfx = new AtmosphereVFX({
+      wind: this.wind,
+      waves: this.waves,
+      groundHeightAt: (x, z) => this.groundHeightAt(x, z),
+      isCity: (x, z) => z < WORLD.promenade.zLand + 2 && cityGroundHeight(x, z) !== null,
+    });
+    root.add(this.vfx.mesh);
 
-    this.interactables.push(...this.city.interactables, ...this.props.interactables);
+    this._createIBL();
     return this;
   }
 
-  _createLighting() {
-    const { scene } = this.engine;
+  _buildOldTown() {
+    const { physics, root } = this;
+    this.city = new CityBuilder(physics, this.textures).build();
+    root.add(this.city.group);
+    this.cityDressing = new CityDressing({ city: this.city, textures: this.textures, wind: this.wind }).build();
+    root.add(this.cityDressing.group);
+    // Bake AO last so it sees every collider (houses, benches, crates, planters…).
+    this.city.bakeGroundAO();
+    this.interactables.push(...this.city.interactables);
+  }
+
+  _buildBeach() {
+    const { physics, root } = this;
+    this.props = new BeachProps({ physics, textures: this.textures, buoyancy: this.buoyancy, parent: root }).build();
+    const avoid = this.props.interactables.map((it) => ({ x: it.object.position.x, z: it.object.position.z, r: 1.6 }));
+    this.beachDressing = new BeachDressing({ physics, avoid }).build();
+    root.add(this.beachDressing.group);
+    this.interactables.push(...this.props.interactables);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lighting & atmosphere
+  // ---------------------------------------------------------------------------
+  _createSun() {
     const { azimuthDeg, elevationDeg } = WORLD.sun;
     const az = THREE.MathUtils.degToRad(azimuthDeg);
     const el = THREE.MathUtils.degToRad(elevationDeg);
     this.sunDir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize();
     sharedUniforms.uSunDir.value.copy(this.sunDir);
+    heightFogUniforms.uHFogSunDir.value.copy(this.sunDir);
 
-    // Warm key light; soft PCF shadows that follow the player (texel-snapped).
-    this.sun = new THREE.DirectionalLight(PALETTE.sun, 3.1);
+    // Warm key light. Shadows: 4096² map over ±40 m (≈2 cm texels) following
+    // the focus; small depth bias + normal bias kill acne on slopes without
+    // detaching contact shadows (peter-panning). Penumbra comes from the
+    // contact-hardening PCF patch (lighting/ShaderPatches.js).
+    this.sun = new THREE.DirectionalLight(PALETTE.sun, 2.75);
     this.sun.castShadow = true;
     const s = this.sun.shadow;
+    const S = RENDER.shadow;
     s.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);
     s.camera.left = s.camera.bottom = -RENDER.shadowFrustum;
     s.camera.right = s.camera.top = RENDER.shadowFrustum;
-    s.camera.near = 1;
-    s.camera.far = 220;
-    s.bias = -0.0004;
-    s.normalBias = 0.035;
-    s.radius = 2.5;
+    s.camera.near = S.near;
+    s.camera.far = S.far;
+    s.bias = S.bias;
+    s.normalBias = S.normalBias;
+    s.radius = S.radius;
     this.root.add(this.sun, this.sun.target);
+  }
 
-    // Rich sky-glow ambient: cool blue from above, warm sand bounce from below.
-    this.hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 1.6);
-    this.root.add(this.hemi);
-
-    // Exponential fog in exactly the sky's horizon colour → seamless blend.
+  _createAtmosphere() {
+    const { scene } = this.engine;
+    // Distance fog in exactly the sky's horizon colour → seamless horizon;
+    // height fog (shader patch) thickens the haze at low altitude.
     scene.fog = new THREE.FogExp2(sharedUniforms.uSkyHorizon.value.clone(), RENDER.fogDensity);
     scene.background = sharedUniforms.uSkyHorizon.value.clone();
+    const H = RENDER.heightFog;
+    heightFogUniforms.uHFogDensity.value = H.density;
+    heightFogUniforms.uHFogFalloff.value = H.falloff;
+    heightFogUniforms.uHFogBase.value = H.base;
+    heightFogUniforms.uHFogColor.value.copy(sharedUniforms.uSkyHorizon.value).multiplyScalar(1.02);
+    heightFogUniforms.uHFogSunColor.value.copy(sharedUniforms.uSunColor.value);
+  }
+
+  /**
+   * Image-based lighting from the procedural sky (replaces the old hemisphere
+   * light). Call again after changing the sun / sky colours.
+   */
+  _createIBL() {
+    const { scene, renderer } = this.engine;
+    this.ibl ??= new SkyIBL(renderer, {
+      size: RENDER.ibl.size,
+      exposure: RENDER.ibl.exposure,
+      groundBounce: RENDER.ibl.groundBounce,
+    });
+    scene.environment = this.ibl.update();
+    scene.environmentIntensity = RENDER.ibl.intensity;
+  }
+
+  refreshLighting() {
+    sharedUniforms.uSunDir.value.copy(this.sunDir);
+    heightFogUniforms.uHFogSunDir.value.copy(this.sunDir);
+    this._createIBL();
   }
 
   /** The point effects (shadows, particles) should centre on — usually the player. */
@@ -121,10 +197,12 @@ export class Environment {
     this._updateShadowCamera();
     const h = this.engine.renderer.getDrawingBufferSize(_v).y;
     this.particles.update(this.focus, h);
+    this.vfx.update(dt, renderTime, this.focus);
   }
 
-  lateUpdate() {
+  lateUpdate(dt) {
     this.sky.update(this.engine.camera);
+    this.cityDressing.update(dt, this.engine.camera.position);
   }
 
   /**
@@ -134,14 +212,14 @@ export class Environment {
    */
   _updateShadowCamera() {
     const texel = (2 * RENDER.shadowFrustum) / RENDER.shadowMapSize;
-    _rot.lookAt(new THREE.Vector3(), this.sunDir.clone().negate(), new THREE.Vector3(0, 1, 0));
+    _rot.lookAt(ORIGIN, _v.copy(this.sunDir).negate(), UP);
     _rotInv.copy(_rot).invert();
     _v.copy(this.focus).applyMatrix4(_rotInv);
     _v.x = Math.round(_v.x / texel) * texel;
     _v.y = Math.round(_v.y / texel) * texel;
     _v.applyMatrix4(_rot);
     this.sun.target.position.copy(_v);
-    this.sun.position.copy(_v).addScaledVector(this.sunDir, 110);
+    this.sun.position.copy(_v).addScaledVector(this.sunDir, (RENDER.shadow.near + RENDER.shadow.far) / 2);
     this.sun.target.updateMatrixWorld();
   }
 }

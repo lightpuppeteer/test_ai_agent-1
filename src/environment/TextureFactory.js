@@ -241,6 +241,58 @@ export class TextureFactory {
     return finish(c, this.anisotropy);
   }
 
+  /**
+   * Heraldic banner (UV mapped). Designs: 0 crimson/gold with a tower,
+   * 1 azure/white quartered, 2 gold/red pales. Painted with soft edges.
+   */
+  banner(design = 0) {
+    const W = 128;
+    const H = 256;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d');
+    const rnd = mulberry32(91 + design * 7);
+    if (design === 0) {
+      ctx.fillStyle = '#9e2a2b';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#e0b445';
+      ctx.fillRect(10, 10, W - 20, 8);
+      ctx.fillRect(10, H - 40, W - 20, 8);
+      // Stylised tower.
+      ctx.fillRect(44, 70, 40, 90);
+      for (let i = 0; i < 3; i++) ctx.fillRect(44 + i * 15, 58, 10, 14);
+      ctx.fillStyle = '#9e2a2b';
+      ctx.fillRect(58, 128, 12, 32);
+    } else if (design === 1) {
+      const colors = ['#2f5d8c', '#efe8d8'];
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = colors[(i + Math.floor(i / 2)) % 2];
+        ctx.fillRect((i % 2) * (W / 2), Math.floor(i / 2) * (H / 2 - 20), W / 2, H / 2 - 20);
+      }
+      ctx.fillStyle = '#2f5d8c';
+      ctx.fillRect(0, H - 40, W, 40);
+    } else {
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = i % 2 ? '#b23a2e' : '#e3b54c';
+        ctx.fillRect((i * W) / 5, 0, W / 5 + 1, H);
+      }
+    }
+    // Swallow-tail cut at the bottom (alpha) + weathering.
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    ctx.lineTo(W / 2, H - 34);
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    blotches(ctx, W, rnd, 20, 10, 40, 0.75, 1.0, 0.12);
+    const t = finish(c, this.anisotropy);
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    return t;
+  }
+
   /** Striped beach towel (UV mapped, not triplanar). */
   towel(colorA = '#d9534f', colorB = '#f4eadc') {
     const S = 128;

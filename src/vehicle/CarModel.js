@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { PALETTE } from '../config.js';
 import { createStylizedMaterial } from '../shaders/StylizedMaterial.js';
+import { enableHeightFog } from '../lighting/ShaderPatches.js';
 
 /**
  * Procedural, soft-edged little classic car (forward = +Z, left = +X).
@@ -22,13 +23,17 @@ export class CarModel {
       dark: S({ name: 'CarDark', color: 0x2a2826 }),
       tire: S({ name: 'Tire', color: 0x2b2a29, rim: 0.15 }),
       seat: S({ name: 'Seat', color: 0x7a4b34 }),
-      glass: new THREE.MeshLambertMaterial({
-        name: 'CarGlass',
-        color: 0xb9d6e0,
-        transparent: true,
-        opacity: 0.22,
-        depthWrite: false,
-      }),
+      glass: enableHeightFog(
+        new THREE.MeshPhysicalMaterial({
+          name: 'CarGlass',
+          color: 0xb9d6e0,
+          roughness: 0.05,
+          metalness: 0,
+          transparent: true,
+          opacity: 0.25,
+          depthWrite: false,
+        }),
+      ),
       head: new THREE.MeshBasicMaterial({ name: 'Headlight', color: new THREE.Color(2.2, 2.0, 1.6) }),
       tail: new THREE.MeshBasicMaterial({ name: 'Taillight', color: new THREE.Color(1.4, 0.15, 0.1) }),
     };

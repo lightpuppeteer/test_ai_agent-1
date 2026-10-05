@@ -14,14 +14,16 @@ import { sharedUniforms, SHARED_UNIFORMS_GLSL, NOISE_GLSL } from '../shaders/com
  *     cycle re-seeds the spawn position with a hash of the cycle index.
  */
 export class WindParticles {
-  constructor({ moteCount = 1400, streakCount = 34 } = {}) {
+  constructor({ moteCount = 1400, streakCount = 34, motes = true } = {}) {
     this.group = new THREE.Group();
     this.group.name = 'WindParticles';
     this.center = new THREE.Vector3();
 
-    this.motes = this._createMotes(moteCount);
+    // Motes are optional: the pooled instanced AtmosphereVFX can take over dust.
+    this.motes = motes ? this._createMotes(moteCount) : null;
     this.streaks = this._createStreaks(streakCount);
-    this.group.add(this.motes, this.streaks);
+    if (this.motes) this.group.add(this.motes);
+    this.group.add(this.streaks);
   }
 
   _createMotes(count) {
@@ -227,6 +229,6 @@ export class WindParticles {
    */
   update(focus, viewportHeight) {
     this.center.copy(focus);
-    this.motes.material.uniforms.uViewportHeight.value = viewportHeight;
+    if (this.motes) this.motes.material.uniforms.uViewportHeight.value = viewportHeight;
   }
 }

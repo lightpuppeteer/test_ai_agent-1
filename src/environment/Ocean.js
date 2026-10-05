@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PALETTE } from '../config.js';
 import { sharedUniforms, SHARED_UNIFORMS_GLSL, NOISE_GLSL, SKY_GLSL } from '../shaders/common.glsl.js';
 import { SAND_HEIGHT_GLSL } from './Terrain.js';
+import { heightFogUniforms } from '../lighting/ShaderPatches.js';
 import { OCEAN_LOD_CENTER } from './GerstnerWaves.js';
 
 /**
@@ -81,6 +82,7 @@ export class Ocean {
     const uniforms = {
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
       ...sharedUniforms,
+      ...heightFogUniforms,
       uWaves: { value: w.uniformWaves },
       uWavePhases: { value: w.uniformPhases },
       uWaterLevel: { value: w.waterLevel },
@@ -96,6 +98,7 @@ export class Ocean {
       depthWrite: true,
       fog: true,
       lights: false,
+      defines: { STY_HEIGHT_FOG: '' },
       uniforms,
       vertexShader: /* glsl */ `
         ${SHARED_UNIFORMS_GLSL}
