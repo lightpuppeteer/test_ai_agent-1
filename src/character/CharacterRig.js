@@ -1,13 +1,12 @@
 import * as THREE from 'three';
-import { PALETTE } from '../config.js';
-import { createStylizedMaterial } from '../shaders/StylizedMaterial.js';
+import { CharacterMesh } from './CharacterMesh.js';
 
 /**
- * Procedural stylised humanoid + animator.
+ * Character animator over the skinned CharacterMesh skeleton.
  *
- * The rig is a hierarchy of Groups (joints) with simple capsule meshes, so the
- * boilerplate runs without any asset. The animator works on a flat pose
- * vector (pelvis offset + Euler per joint):
+ * The body is a modular, morphable SkinnedMesh (see CharacterMesh.js); this
+ * class only drives its bones. The animator works on a flat pose vector
+ * (pelvis offset + Euler per joint):
  *
  *   final = crossfade(snapshot, target)       target = locomotion | static pose
  *   locomotion = idle·w_i + walk·w_w + run·w_r   (weights from actual speed)
@@ -236,11 +235,15 @@ const STATIC_POSES = {
 const smoother = (x) => x * x * x * (x * (x * 6 - 15) + 10);
 
 export class CharacterRig {
-  constructor() {
-    this.root = new THREE.Group();
-    this.root.name = 'CharacterRig';
-    this.joints = {};
-    this._build();
+  /**
+   * @param {object} [o]
+   * @param {number} [o.femininity] 0 = masculine … 1 = feminine body profile
+   */
+  constructor({ femininity = 1 } = {}) {
+    // Skinned, morphable body; the animator drives its bones by name.
+    this.body = new CharacterMesh({ femininity });
+    this.root = this.body.root;
+    this.joints = this.body.bones;
 
     // Animator state
     this.output = restPose(new Float32Array(POSE_SIZE));
@@ -262,106 +265,6 @@ export class CharacterRig {
     this._input = { speed: 0, grounded: true, turnRate: 0, accel: 0, vy: 0 };
     this.walkSpeed = 1.7;
     this.runSpeed = 5.4;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Construction
-  // ---------------------------------------------------------------------------
-  _build() {
-    const S = createStylizedMaterial;
-    const m = {
-      tunic: S({ name: 'Tunic', color: PALETTE.tunic, painterly: 0.12, rim: 0.3 }),
-      trousers: S({ name: 'Trousers', color: PALETTE.trousers, rim: 0.25 }),
-      skin: S({ name: 'Skin', color: PALETTE.skin, wrap: 0.7, rim: 0.35, painterly: 0.05 }),
-      hair: S({ name: 'Hair', color: PALETTE.hair, rim: 0.4 }),
-      scarf: S({ name: 'Scarf', color: PALETTE.scarf, rim: 0.3 }),
-      boots: S({ name: 'Boots', color: 0x4a3426 }),
-      strap: S({ name: 'Strap', color: 0x5c4030 }),
-    };
-    this.materials = m;
-    const capsule = (r, len, mat, y) => {
-      const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat);
-      mesh.position.y = y;
-      mesh.castShadow = true;
-      return mesh;
-    };
-    const joint = (name, parent, x, y, z) => {
-      const g = new THREE.Group();
-      g.name = name;
-      g.position.set(x, y, z);
-      parent.add(g);
-      this.joints[name] = g;
-      return g;
-    };
-
-    const pelvis = joint('pelvis', this.root, 0, PELVIS_Y, 0);
-    const hips = capsule(0.15, 0.12, m.trousers, -0.02);
-    hips.rotation.z = Math.PI / 2;
-    hips.scale.set(1, 1, 0.8);
-    pelvis.add(hips);
-
-    const spine = joint('spine', pelvis, 0, 0.08, 0);
-    const torso = capsule(0.175, 0.24, m.tunic, 0.2);
-    torso.scale.set(1, 1, 0.74);
-    spine.add(torso);
-    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 12), m.strap);
-    belt.scale.z = 0.76;
-    belt.position.y = 0.02;
-    spine.add(belt);
-
-    const chest = joint('chest', spine, 0, 0.36, 0);
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.045, 6, 12), m.scarf);
-    collar.rotation.x = Math.PI / 2;
-    collar.position.y = 0.05;
-    collar.castShadow = true;
-    chest.add(collar);
-    // Small backpack strap detail.
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.27), m.strap);
-    strap.position.set(0.08, -0.12, 0);
-    strap.rotation.z = -0.35;
-    chest.add(strap);
-
-    const neck = joint('neck', chest, 0, 0.07, 0);
-    const head = joint('head', neck, 0, 0.1, 0);
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.115, 18, 14), m.skin);
-    skull.position.set(0, 0.1, 0.01);
-    skull.scale.set(0.95, 1.05, 1);
-    skull.castShadow = true;
-    head.add(skull);
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.122, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), m.hair);
-    hair.position.set(0, 0.115, -0.012);
-    hair.rotation.x = -0.35;
-    hair.castShadow = true;
-    head.add(hair);
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.045, 6), m.skin);
-    nose.position.set(0, 0.09, 0.12);
-    nose.rotation.x = Math.PI / 2;
-    head.add(nose);
-
-    for (const [side, sx] of [
-      ['L', 1],
-      ['R', -1],
-    ]) {
-      const upper = joint(`upperArm${side}`, chest, 0.2 * sx, -0.02, 0);
-      upper.add(capsule(0.056, 0.2, m.tunic, -0.14));
-      const fore = joint(`foreArm${side}`, upper, 0, -0.29, 0);
-      fore.add(capsule(0.048, 0.19, m.skin, -0.13));
-      const hand = joint(`hand${side}`, fore, 0, -0.27, 0);
-      const handMesh = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 8), m.skin);
-      handMesh.scale.set(0.8, 1.1, 0.6);
-      handMesh.position.y = -0.03;
-      hand.add(handMesh);
-
-      const thigh = joint(`thigh${side}`, pelvis, 0.1 * sx, -0.06, 0);
-      thigh.add(capsule(0.078, 0.29, m.trousers, -0.21));
-      const shin = joint(`shin${side}`, thigh, 0, -0.44, 0);
-      shin.add(capsule(0.064, 0.3, m.trousers, -0.21));
-      const foot = joint(`foot${side}`, shin, 0, -0.44, 0);
-      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.08, 0.26), m.boots);
-      boot.position.set(0, -0.0, 0.05);
-      boot.castShadow = true;
-      foot.add(boot);
-    }
   }
 
   // ---------------------------------------------------------------------------

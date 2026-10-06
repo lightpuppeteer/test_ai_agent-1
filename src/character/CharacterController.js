@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { StateMachine } from './StateMachine.js';
 import { CharacterBody, POSTURE } from './CharacterBody.js';
 import { CharacterRig } from './CharacterRig.js';
-import { CharacterCloth } from './CharacterCloth.js';
+import { Wardrobe } from './Wardrobe.js';
+import { CHARACTER } from '../config.js';
 import { IdleState, WalkState, RunState, AirborneState } from './states/LocomotionStates.js';
 import { SitState, LayDownState } from './states/AnchoredStates.js';
 import { EnterVehicleState, DriveState, ExitVehicleState } from './states/VehicleStates.js';
@@ -44,7 +45,10 @@ export const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
  *   components
  *   ├─ body      CharacterBody   capsule + Rapier KCC (physics authority on foot)
  *   ├─ rig       CharacterRig    procedural skeleton + pose blending animator
- *   ├─ cloth     CharacterCloth  Verlet cloak + spring-bone hair/scarf
+ *   ├─ rig       CharacterRig    animator driving the CharacterMesh skeleton
+ *   │              (lofted skinned body, masculine↔feminine morph)
+ *   ├─ wardrobe  Wardrobe        garments: skinned shells, Verlet cloth
+ *   │              layers, flowing dress, spring hair/scarf
  *   └─ (context) input, interactions, vehicles, camera, hud, environment
  *
  * Each state reads the *intent* (camera-relative move vector, run flag) and
@@ -66,13 +70,15 @@ export class CharacterController {
     // --- Components ---------------------------------------------------------
     const feet = new THREE.Vector3(spawn.x, environment.groundHeightAt(spawn.x, spawn.z) + 0.05, spawn.z);
     this.body = new CharacterBody(physics, feet);
-    this.rig = new CharacterRig();
+    this.rig = new CharacterRig({ femininity: CHARACTER.femininity });
     parent.add(this.rig.root);
     this.rig.root.position.copy(feet);
     this.yaw = spawn.yaw ?? 0;
     this.rig.root.quaternion.setFromAxisAngle(UP, this.yaw);
     this.rig.update(0);
-    this.cloth = new CharacterCloth(this.rig, environment.wind, parent);
+    this.wardrobe = new Wardrobe({ mesh: this.rig.body, wind: environment.wind, worldParent: parent });
+    this.wardrobe.equipOutfit(CHARACTER.outfit);
+    this._morph = null; // animated profile change { from, to, t }
 
     // --- Movement tuning ----------------------------------------------------
     this.walkSpeed = 1.75;
@@ -125,6 +131,9 @@ export class CharacterController {
 
   update(dt) {
     this._readIntent();
+    if (this.input.consume('toggleProfile')) this.toggleProfile();
+    if (this.input.consume('cycleOutfit')) this.cycleOutfit();
+    this._updateMorph(dt);
     this.fsm.update(dt);
     this._updatePresentation(dt);
 
@@ -141,7 +150,7 @@ export class CharacterController {
 
   lateUpdate(dt) {
     this.rig.root.getWorldPosition(_v);
-    this.cloth.update(dt, _v.y);
+    this.wardrobe.update(dt, _v.y);
   }
 
   // ---------------------------------------------------------------------------
@@ -281,6 +290,44 @@ export class CharacterController {
     const anchor = focus.nearestFreeAnchor(this.getFeet(_v));
     if (!anchor) return false;
     return this.fsm.transition(stateName, { interactable: focus, anchor });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Appearance
+  // ---------------------------------------------------------------------------
+  /** Smoothly morphs between the masculine and feminine body profiles. */
+  toggleProfile(duration = 1.2) {
+    const from = this.rig.body.femininity;
+    this._morph = { from, to: from >= 0.5 ? 0 : 1, t: 0, duration };
+  }
+
+  setProfile(f) {
+    this._morph = null;
+    this.rig.body.setFemininity(f);
+    this.wardrobe.syncProfile();
+  }
+
+  _updateMorph(dt) {
+    const m = this._morph;
+    if (!m) return;
+    m.t = Math.min(1, m.t + dt / m.duration);
+    const k = m.t * m.t * (3 - 2 * m.t);
+    this.rig.body.setFemininity(m.from + (m.to - m.from) * k);
+    this.wardrobe.syncProfile();
+    if (m.t >= 1) this._morph = null;
+  }
+
+  /** Equips the next outfit preset (explorer → skirt & shirt → silver dress → bikini). */
+  cycleOutfit() {
+    const names = this.wardrobe.outfitNames;
+    const next = names[(names.indexOf(this.wardrobe.outfit) + 1) % names.length];
+    this.equipOutfit(next);
+    return next;
+  }
+
+  equipOutfit(name) {
+    this.wardrobe.equipOutfit(name);
+    this.hud?.toast?.(`Outfit: ${name}`);
   }
 
   /** Standing capsule centre height (for states that need it). */

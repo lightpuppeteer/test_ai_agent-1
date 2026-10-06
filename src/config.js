@@ -61,20 +61,41 @@ export const PALETTE = {
 // ---------------------------------------------------------------------------
 export const RENDER = {
   maxPixelRatio: 1.75,
-  msaaSamples: 4,
-  shadowMapSize: 2048,
-  shadowFrustum: 38, // half-size (m) of the orthographic sun shadow camera
+  antialias: 'smaa', // 'smaa' | 'none'
   exposure: 1.0,
-  fogDensity: 0.0026,
-  bloom: { strength: 0.22, radius: 0.55, threshold: 0.92 },
-  grading: {
-    saturation: 1.06,
-    contrast: 1.04,
-    shadowTint: [0.93, 0.97, 1.04], // cool shadows (Jusant-style)
-    highlightTint: [1.06, 1.0, 0.9], // warm highlights
-    vignette: 0.32,
-    grain: 0.025,
+
+  // --- Sun shadows ---------------------------------------------------------
+  shadowMapSize: 4096,
+  shadowFrustum: 40, // half-size (m) of the orthographic sun shadow camera
+  shadow: {
+    near: 1,
+    far: 220,
+    bias: -0.00025, // depth bias (acne)
+    normalBias: 0.022, // world-space offset along normals (acne on slopes) without peter-panning
+    radius: 3.0, // max penumbra scale in texels (contact-hardening patch scales it)
+    taps: 12, // PCF taps per pixel
+    lightAngle: 0.03, // apparent sun size (rad): penumbra growth with blocker distance
   },
+
+  // --- Image-based lighting (procedural sky PMREM) -------------------------
+  ibl: { exposure: 1.1, intensity: 1.0, groundBounce: 0.85, size: 128 },
+
+  // --- Atmosphere ------------------------------------------------------------
+  fogDensity: 0.0022, // distance FogExp2 (horizon)
+  heightFog: { density: 0.0018, falloff: 0.12, base: 0.0 },
+
+  // --- Post-processing -------------------------------------------------------
+  ao: { enabled: true, radius: 0.85, intensity: 0.8, bias: 0.025, samples: 12, scale: 0.5 },
+  bloom: { strength: 0.16, radius: 0.65, threshold: 0.86 },
+  grading: {
+    saturation: 1.04,
+    contrast: 1.03,
+    shadowTint: [0.97, 0.99, 1.02], // the creative split-tone lives in the LUT
+    highlightTint: [1.02, 1.0, 0.97],
+    vignette: 0.3,
+    grain: 0.022,
+  },
+  lut: { enabled: true, intensity: 0.85, size: 32 },
 };
 
 // ---------------------------------------------------------------------------
@@ -143,6 +164,16 @@ export const INPUT_BINDINGS = {
   handbrake: ['Space'],
   debugPhysics: ['KeyP'],
   toggleHelp: ['KeyH'],
+  cycleOutfit: ['KeyO'],
+  toggleProfile: ['KeyG'],
+};
+
+// ---------------------------------------------------------------------------
+// Player character
+// ---------------------------------------------------------------------------
+export const CHARACTER = {
+  femininity: 1, // 0 = masculine profile … 1 = feminine profile (morphable at runtime)
+  outfit: 'explorer', // explorer | skirtShirt | silverDress | bikini
 };
 
 // ---------------------------------------------------------------------------

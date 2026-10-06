@@ -44,6 +44,18 @@ export class PhysicsWorld {
     this.world.step();
   }
 
+  /**
+   * Refreshes scene-query acceleration structures without advancing time.
+   * Needed before ray casting colliders created since the last step (e.g.
+   * baking vertex AO right after building a level).
+   */
+  updateQueries() {
+    const dt = this.world.timestep;
+    this.world.timestep = 0;
+    this.world.step();
+    this.world.timestep = dt;
+  }
+
   /** Records the post-step pose of every linked body (called by Engine). */
   capture() {
     for (const l of this._links) {
