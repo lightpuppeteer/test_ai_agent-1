@@ -172,8 +172,11 @@ export const INPUT_BINDINGS = {
 // Player character
 // ---------------------------------------------------------------------------
 export const CHARACTER = {
-  femininity: 1, // 0 = masculine profile … 1 = feminine profile (morphable at runtime)
-  outfit: 'explorer', // explorer | skirtShirt | silverDress | bikini
+  // Authored character (Blender → glTF, see art/blender). Set to null to use the
+  // procedural, morphable body below.
+  asset: `${import.meta.env?.BASE_URL ?? '/'}assets/characters/heroine.glb`,
+  femininity: 1, // procedural body: 0 = masculine profile … 1 = feminine profile (morphable at runtime)
+  outfit: 'explorer', // explorer | skirtShirt | silverDress | bikini (authored character: explorer)
 };
 
 // ---------------------------------------------------------------------------

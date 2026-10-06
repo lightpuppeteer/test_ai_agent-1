@@ -37,6 +37,42 @@ Portugal. It covers:
 
 _Screenshots are from headless Chromium with software WebGL (SwiftShader), so the fps counter is not representative._
 
+## Authored heroine (Blender pipeline)
+
+![Heroine: explorer outfit, idle / back / walking](docs/screenshots/12-heroine.jpg)
+![Heroine: face, sitting, lying down, driving](docs/screenshots/13-heroine-detail-poses.jpg)
+
+The player character is now an authored, realistic heroine built in Blender and loaded as a glTF
+(`public/assets/characters/heroine.glb`). The procedural body is still there as a fallback (set
+`CHARACTER.asset = null` in `config.js`, or when the file is missing) and for the masculine↔feminine morph.
+
+**Pipeline** (`art/blender/scripts/`, Blender 4.5 + the MPFB 2 extension with the CC0 MakeHuman asset packs):
+
+| Script | Role |
+|---|---|
+| `heroine_pipeline.py` | `CONFIG` (height, body macros, face targets, skin, eyes, hair…) and the two stages: **source** builds the MPFB human (`heroine_mpfb_source.blend`, still editable in MPFB); **game** poses her into the game's bind pose, builds the 17-joint game skeleton with merged weights plus `hair0…hair3` ponytail joints, the outfit, the bakes and the body coverage, then exports the GLB and `heroine_game.blend` |
+| `garments.py` | garment toolkit: grow cloth from body regions, drape against a smoothed body proxy, gravity "hang", belt cinch, soft push-out, folds, thickness, weight smoothing |
+| `explorer_outfit.py` | the outfit, parameterised by the body's joints: tunic, belt and brass buckle, canvas trousers, laced boots with rubber soles |
+| `outfit_looks.py`, `materials.py`, `heroine_textures.py` | procedural Cycles look-dev in object space (fabric mottling, wear, grime, double-stitched seams and hems from distance fields, laces, eyelets, welt stitching), baked to albedo × AO, normal and roughness maps in `art/blender/textures/` |
+
+To tailor her (face, hair, height, skin…), edit `CONFIG` and run `heroine_pipeline.py` from Blender's Text Editor
+(`HEROINE_STAGE=game` skips rebuilding the source). Stage 2 takes about 1.5 minutes.
+
+**In the game** (`src/character/CharacterAsset.js`): only the glTF joint *positions* are used. `CharacterMesh`
+rebuilds its skeleton with identity rest rotations at those joints (the convention all `CharacterRig` poses use) and
+rebinds the meshes to it, so Blender bone rolls never matter. The animator's proportions (pelvis height, kneeling
+height, arm spread) come from the skeleton. Authored garments are `asset` wardrobe items. The body's `_COVER` vertex
+attribute marks skin hidden by each outfit channel and is discarded in the skin shader, which replaces region hiding.
+The ponytail is a spring-bone chain on the authored joints, and the cloak is still Verlet cloth. Its pins are sampled
+on the authored body by ray-casting the torso, and its colliders are capsules derived from the joints.
+
+**Character viewer**: `npm run dev` → `http://localhost:5173/viewer.html` shows the character stack with the game's
+materials and sky light, without the world. Keys 1–8 switch poses (idle, walk, run, jump, sit, kneel, lie, drive),
+**O** cycles outfits and **T** toggles a turntable. `?procedural` shows the procedural body instead.
+
+Credits: body, skin, eyes, brows, lashes, teeth and hair come from MakeHuman / MPFB (CC0). The outfit, textures and
+rig conversion were made for this project.
+
 ## Quick start
 
 ```bash
@@ -100,6 +136,7 @@ src/
 │                               library), texture.worker.js
 ├─ character/
 │  ├─ CharacterController.js    entity: components + FSM + intent + KCC bridging helpers
+│  ├─ CharacterAsset.js         authored glTF character: joints, parts, torso sampling for cloth pins
 │  ├─ StateMachine.js           State / StateMachine with an explicit transition table
 │  ├─ CharacterBody.js          capsule + KinematicCharacterController, postures, safe-spawn search
 │  ├─ CharacterRig.js           pose-vector animator (cross-fades, blend space) driving the CharacterMesh bones
@@ -119,6 +156,7 @@ src/
 │  ├─ VerletCloth.js            PBD cloth: aerodynamics, swept capsule collisions, cloth-over-cloth layering
 │  └─ SpringBoneChain.js        VRM-style spring bones + skinned tube helper
 ├─ chapters/ShoreChapter.js     chapter 1: wires it all together
+├─ tools/CharacterViewer.js     dev page (viewer.html): character, outfits and poses without the world
 └─ ui/                          HUD (prompt, gauges, toasts) + CSS
 tests/                          node --test suites (physics, vehicle, end-to-end FSM, character/wardrobe/VFX/LUT)
 ```
@@ -357,7 +395,8 @@ carry rigidly. Distant banners freeze. Rapier's inlined WASM is lazy-loaded in i
 
 ## Known limitations
 
-- The character is procedural (lofted mesh, pose-vector animator), with no foot IK or authored clips. Garments
+- Animation is still the procedural pose-vector animator (no foot IK or authored clips), now driving the authored heroine. Her
+  only outfit so far is the explorer one: the other procedural outfits (skirt, silver dress, swimwear) still need Blender versions. Garments
   collide with body capsules, not with each other, except for explicit `over` layering, and the dress's displaced
   vertices keep their skinned normals.
 - Approach pathing uses one side waypoint. Swap in a navmesh for complex layouts.

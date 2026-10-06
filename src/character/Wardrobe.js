@@ -227,6 +227,74 @@ export const OUTFITS = {
 /** Hair style per profile (switches when the morph crosses 0.5). */
 const HAIR = { masculine: ['hairShort'], feminine: ['hairLong', 'ponytail'] };
 
+// -----------------------------------------------------------------------------
+// Authored character (Blender glTF) wardrobe.
+//
+// `asset` items attach meshes from the character glTF by node name; each part
+// gets the game's stylised material over the glTF's baked textures, plus the
+// procedural fabric relief for close-ups. `cover` is the body coverage channel
+// (0–3, see CharacterAsset `_COVER`) whose skin the item hides. Simulated items
+// (cloak, scarf) are shared with the procedural wardrobe; `assetOverride`
+// re-anchors them on the authored skeleton.
+// -----------------------------------------------------------------------------
+export const ASSET_ITEMS = {
+  heroineHair: {
+    kind: 'asset',
+    parts: [{ name: 'Hair' }],
+    // Ponytail on the authored hair0…hair3 joints, simulated as a spring chain.
+    springJoints: ['hair0', 'hair1', 'hair2', 'hair3'],
+    spring: { stiffness: 0.85, drag: 0.28, gravityPower: 0.55, windInfluence: 0.08 },
+  },
+  explorerTunic: {
+    kind: 'asset',
+    cover: 0,
+    parts: [{ name: 'Tunic', fabric: 'cotton', material: { roughness: 0.93, rim: 0.24, painterly: 0.05, wrap: 0.55 } }],
+  },
+  explorerBelt: {
+    kind: 'asset',
+    cover: 0,
+    parts: [
+      { name: 'Belt', fabric: 'leather', material: { roughness: 0.55, rim: 0.18, painterly: 0 } },
+      { name: 'Buckle', material: { metalness: 1, roughness: 0.32, rim: 0.08, painterly: 0, envMapIntensity: 1.3 } },
+    ],
+  },
+  explorerTrousers: {
+    kind: 'asset',
+    cover: 0,
+    parts: [{ name: 'Trousers', fabric: 'denim', material: { roughness: 0.9, rim: 0.2, painterly: 0.04, wrap: 0.5 } }],
+  },
+  explorerBoots: {
+    kind: 'asset',
+    cover: 0,
+    parts: [
+      { name: 'Boots', fabric: 'leather', material: { roughness: 0.5, rim: 0.2, painterly: 0 } },
+      { name: 'Soles', material: { roughness: 0.85, rim: 0.05, painterly: 0 } },
+    ],
+  },
+};
+
+export const ASSET_OUTFITS = {
+  // (The procedural spring scarf reads as a stick next to authored cloth, so the
+  // heroine goes without it until a proper scarf is modelled.)
+  explorer: ['explorerTunic', 'explorerBelt', 'explorerTrousers', 'explorerBoots', 'cloak'],
+};
+
+/** Re-anchoring of shared simulated items on the authored skeleton. */
+const ASSET_OVERRIDES = {
+  // Hang from the base of the neck (the authored chest joint sits mid-ribcage).
+  scarf: { bone: 'neck', offset: [0.05, -0.035, -0.075], rotation: [0.45, 0, 0.15] },
+  // Finer grid (the authored body reads at close range), a narrower cut that sits on
+  // the shoulder blades, and a heavier, darker wool.
+  cloak: {
+    cols: 15,
+    rows: 19,
+    length: 0.78,
+    flare: 0.025,
+    arc: { segment: 'torso', t: 1.43, from: (3 * Math.PI) / 2 - 0.85, to: (3 * Math.PI) / 2 + 0.85, inflate: 0.035 },
+    material: { color: 0x2a5452, roughness: 0.95, rim: 0.22, painterly: 0.08, painterlyScale: 1.6 },
+  },
+};
+
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
 const _head = new THREE.Vector3();
@@ -261,8 +329,27 @@ export class Wardrobe {
     this._materials = new Map();
   }
 
+  /** Whether the body is an authored (glTF) character. */
+  get authored() {
+    return !!this.mesh.isAuthored;
+  }
+
+  get outfits() {
+    return this.authored ? ASSET_OUTFITS : OUTFITS;
+  }
+
   get outfitNames() {
-    return Object.keys(OUTFITS);
+    return Object.keys(this.outfits);
+  }
+
+  /** Item definition, with authored-skeleton overrides applied. */
+  _def(name) {
+    if (this.authored) {
+      if (ASSET_ITEMS[name]) return ASSET_ITEMS[name];
+      const base = WARDROBE_ITEMS[name];
+      return base && ASSET_OVERRIDES[name] ? { ...base, ...ASSET_OVERRIDES[name] } : base;
+    }
+    return WARDROBE_ITEMS[name];
   }
 
   // ---------------------------------------------------------------------------
@@ -356,7 +443,11 @@ export class Wardrobe {
    * hair) stay on untouched; only the difference is rebuilt.
    */
   equipOutfit(name) {
-    if (!OUTFITS[name]) throw new Error(`Unknown outfit "${name}"`);
+    if (!this.outfits[name]) {
+      // An outfit the authored character doesn't have yet: keep the current one.
+      if (this.authored && OUTFITS[name]) return;
+      throw new Error(`Unknown outfit "${name}"`);
+    }
     this.outfit = name;
     this._sync();
   }
@@ -370,15 +461,16 @@ export class Wardrobe {
   }
 
   _style() {
+    if (this.authored) return 'authored';
     return this.mesh.femininity >= 0.5 ? 'feminine' : 'masculine';
   }
 
   /** Brings the equipped set in line with (outfit, profile style). */
   _sync() {
     const style = this._style();
-    const wanted = new Set(HAIR[style]);
-    for (const n of OUTFITS[this.outfit] ?? []) {
-      const profiles = WARDROBE_ITEMS[n].profiles;
+    const wanted = new Set(this.authored ? ['heroineHair'] : HAIR[style]);
+    for (const n of this.outfits[this.outfit] ?? []) {
+      const profiles = this._def(n).profiles;
       if (!profiles || profiles.includes(style)) wanted.add(n);
     }
     for (const n of [...this.items.keys()]) if (!wanted.has(n)) this.unequip(n);
@@ -388,10 +480,11 @@ export class Wardrobe {
 
   equip(name) {
     if (this.items.has(name)) return this.items.get(name);
-    const def = WARDROBE_ITEMS[name];
+    const def = this._def(name);
     if (!def) throw new Error(`Unknown wardrobe item "${name}"`);
     const item = { name, def, meshes: [] };
-    if (def.kind === 'shell') this._buildShell(item);
+    if (def.kind === 'asset') this._buildAsset(item);
+    else if (def.kind === 'shell') this._buildShell(item);
     else if (def.kind === 'dress') this._buildDress(item);
     else if (def.kind === 'cloth') this._buildCloth(item);
     else if (def.kind === 'spring') this._buildSpring(item);
@@ -412,6 +505,8 @@ export class Wardrobe {
       }
     }
     item.holder?.removeFromParent();
+    // Authored spring joints go back to rest.
+    for (const j of item.def.springJoints ?? []) this.mesh.bones[j]?.quaternion.identity();
     this.items.delete(name);
     this._refreshMasking();
     this._linkLayers();
@@ -429,6 +524,12 @@ export class Wardrobe {
   }
 
   _refreshMasking() {
+    if (this.authored) {
+      const mask = new THREE.Vector4(0, 0, 0, 0); // (Vector4's default w is 1)
+      for (const it of this.items.values()) if (it.def.cover !== undefined) mask.setComponent(it.def.cover, 1);
+      this.mesh.setCoverage(mask);
+      return;
+    }
     const hidden = [];
     for (const it of this.items.values()) hidden.push(...(it.def.hides ?? []));
     this.mesh.setHiddenRegions(hidden);
@@ -437,6 +538,53 @@ export class Wardrobe {
   // ---------------------------------------------------------------------------
   // Builders
   // ---------------------------------------------------------------------------
+  /** Authored parts from the character glTF (+ an optional spring chain on authored joints). */
+  _buildAsset(item) {
+    const def = item.def;
+    for (const part of def.parts) {
+      const src = this.mesh.asset.parts.get(part.name)?.material;
+      item.meshes.push(this.mesh.attachAssetPart(part.name, this._assetMaterial(part, src)));
+    }
+    if (def.springJoints) {
+      this.mesh.root.updateMatrixWorld(true);
+      const bones = def.springJoints.map((n) => this.mesh.bones[n]).filter(Boolean);
+      if (bones.length) {
+        const last = bones[bones.length - 1];
+        item.spring = new SpringBoneChain(bones, { ...def.spring, tipOffset: last.position.clone().multiplyScalar(0.8) });
+        item.spring.colliders = [
+          { center: new THREE.Vector3(), radius: 0.085 }, // skull
+          { center: new THREE.Vector3(), radius: 0.12 }, // upper back
+        ];
+        item.authoredSpring = true;
+      }
+    }
+  }
+
+  _assetMaterial(part, src) {
+    const key = `asset:${part.name}`;
+    if (this._materials.has(key)) return this._materials.get(key);
+    const spec = part.material ?? {};
+    const fab = part.fabric ? fabric(part.fabric) : null;
+    const material = createStylizedMaterial({
+      name: `Garment:${part.name}`,
+      color: src?.color?.getHex?.() ?? 0xffffff,
+      map: src?.map ?? null,
+      wrap: 0.55,
+      ...spec,
+      uniforms: fab?.uniforms ?? {},
+      defines: fab?.defines ?? {},
+      patch: fab?.patch ?? null,
+      cacheKey: fab?.cacheKey ?? '',
+    });
+    if (src?.normalMap) {
+      material.normalMap = src.normalMap;
+      material.normalScale.copy(src.normalScale);
+    }
+    if (src?.roughnessMap) material.roughnessMap = src.roughnessMap;
+    this._materials.set(key, material);
+    return material;
+  }
+
   _buildShell(item) {
     const geometry = this.mesh.buildGarmentGeometry(item.def.parts);
     item.meshes.push(this.mesh.attachGarment(geometry, this._material(item.def, item), item.name));
@@ -602,9 +750,16 @@ export class Wardrobe {
     for (const it of this.items.values()) {
       if (it.spring) {
         const [h, t] = it.spring.colliders;
-        h.center.copy(head);
-        t.center.lerpVectors(chest.a, chest.b, 0.6);
-        t.radius = chest.r + 0.02;
+        if (it.authoredSpring) {
+          M.bones.head.getWorldPosition(h.center);
+          h.center.y += 0.075;
+          t.center.lerpVectors(chest.a, chest.b, 0.85);
+          t.radius = chest.r + 0.01;
+        } else {
+          h.center.copy(head);
+          t.center.lerpVectors(chest.a, chest.b, 0.6);
+          t.radius = chest.r + 0.02;
+        }
         it.spring.update(dt, this.windAt);
       } else if (it.uniforms) {
         this._updateDressUniforms(it);

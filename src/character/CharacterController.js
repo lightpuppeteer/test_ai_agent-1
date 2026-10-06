@@ -56,7 +56,11 @@ export const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
  * short and declarative. Physics runs in fixedUpdate; presentation in update.
  */
 export class CharacterController {
-  constructor({ physics, input, interactions, vehicles, environment, cameraRig, hud, parent, camera, spawn }) {
+  /**
+   * @param {object} o
+   * @param {import('./CharacterAsset.js').CharacterAsset|null} [o.asset] authored body; null = procedural
+   */
+  constructor({ physics, input, interactions, vehicles, environment, cameraRig, hud, parent, camera, spawn, asset = null }) {
     this.physics = physics;
     this.input = input;
     this.interactions = interactions;
@@ -70,7 +74,7 @@ export class CharacterController {
     // --- Components ---------------------------------------------------------
     const feet = new THREE.Vector3(spawn.x, environment.groundHeightAt(spawn.x, spawn.z) + 0.05, spawn.z);
     this.body = new CharacterBody(physics, feet);
-    this.rig = new CharacterRig({ femininity: CHARACTER.femininity });
+    this.rig = new CharacterRig({ femininity: CHARACTER.femininity, asset });
     parent.add(this.rig.root);
     this.rig.root.position.copy(feet);
     this.yaw = spawn.yaw ?? 0;
@@ -297,6 +301,10 @@ export class CharacterController {
   // ---------------------------------------------------------------------------
   /** Smoothly morphs between the masculine and feminine body profiles. */
   toggleProfile(duration = 1.2) {
+    if (this.rig.body.isAuthored) {
+      this.hud?.toast?.('This character has a single authored body');
+      return;
+    }
     const from = this.rig.body.femininity;
     this._morph = { from, to: from >= 0.5 ? 0 : 1, t: 0, duration };
   }

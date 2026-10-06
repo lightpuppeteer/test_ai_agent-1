@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { Chapter } from '../core/ChapterManager.js';
-import { WORLD } from '../config.js';
+import { WORLD, CHARACTER } from '../config.js';
 import { Environment } from '../environment/Environment.js';
 import { InteractionManager } from '../interaction/InteractionManager.js';
 import { VehicleSystem } from '../vehicle/VehicleSystem.js';
 import { CharacterController } from '../character/CharacterController.js';
+import { loadCharacterAsset } from '../character/CharacterAsset.js';
 
 /**
  * Chapter I — The Shore: beach, ocean and the old-town square.
@@ -19,6 +20,9 @@ export class ShoreChapter extends Chapter {
   async load(ctx) {
     const { engine, physics, input, hud, cameraRig } = ctx;
 
+    // The authored heroine (Blender glTF) loads while the world builds; if the
+    // file is missing the procedural body is used instead.
+    const heroine = loadCharacterAsset(CHARACTER.asset);
     this.environment = new Environment({ engine, physics, root: this.root }).build();
 
     this.interactions = new InteractionManager({ cellSize: 8 });
@@ -45,6 +49,7 @@ export class ShoreChapter extends Chapter {
       parent: this.root,
       camera: engine.camera,
       spawn: WORLD.spawn,
+      asset: await heroine,
     });
 
     // Update order: character (intent → FSM → KCC) → vehicles → environment

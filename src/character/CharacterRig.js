@@ -53,11 +53,20 @@ function addRot(out, joint, x = 0, y = 0, z = 0) {
   out[i + 1] += y;
   out[i + 2] += z;
 }
-function restPose(out) {
+/**
+ * Body proportions the poses depend on. The procedural body uses the
+ * defaults; authored bodies derive them from their skeleton (see CharacterRig).
+ *   pelvisY  standing pelvis height
+ *   kneelY   pelvis height when kneeling upright (≈ thigh length + 0.12)
+ *   armZ     extra arm abduction (negative when the bind pose already spreads the arms)
+ */
+const DEFAULT_PROPORTIONS = { pelvisY: PELVIS_Y, kneelY: 0.56, armZ: 0 };
+
+function restPose(out, k = DEFAULT_PROPORTIONS) {
   out.fill(0);
-  out[1] = PELVIS_Y;
-  rot(out, 'upperArmL', 0, 0, 0.1);
-  rot(out, 'upperArmR', 0, 0, -0.1);
+  out[1] = k.pelvisY;
+  rot(out, 'upperArmL', 0, 0, 0.1 + k.armZ);
+  rot(out, 'upperArmR', 0, 0, -0.1 - k.armZ);
   rot(out, 'foreArmL', -0.12);
   rot(out, 'foreArmR', -0.12);
   return out;
@@ -66,25 +75,25 @@ function restPose(out) {
 // ---------------------------------------------------------------------------
 // Locomotion cycles (phase φ in radians; one cycle = two steps)
 // ---------------------------------------------------------------------------
-function idlePose(out, t) {
-  restPose(out);
+function idlePose(out, t, k = DEFAULT_PROPORTIONS) {
+  restPose(out, k);
   const b = Math.sin(t * 1.6);
-  out[1] = PELVIS_Y - 0.006 * b;
+  out[1] = k.pelvisY - 0.006 * b;
   rot(out, 'pelvis', 0, 0, 0.025 * Math.sin(t * 0.45));
   rot(out, 'chest', 0.025 * b, 0, -0.02 * Math.sin(t * 0.45));
   rot(out, 'head', 0.03 * Math.sin(t * 0.21), 0.22 * Math.sin(t * 0.31) * Math.sin(t * 0.13), 0);
-  rot(out, 'upperArmL', 0.02 * b, 0, 0.1 + 0.015 * b);
-  rot(out, 'upperArmR', 0.02 * b, 0, -0.1 - 0.015 * b);
+  rot(out, 'upperArmL', 0.02 * b, 0, 0.1 + k.armZ + 0.015 * b);
+  rot(out, 'upperArmR', 0.02 * b, 0, -0.1 - k.armZ - 0.015 * b);
   rot(out, 'thighL', 0, 0, 0.03);
   rot(out, 'thighR', 0, 0, -0.03);
   return out;
 }
 
-function walkPose(out, phi) {
-  restPose(out);
+function walkPose(out, phi, k = DEFAULT_PROPORTIONS) {
+  restPose(out, k);
   const s = Math.sin(phi);
   const c = Math.cos(phi);
-  out[1] = PELVIS_Y - 0.03 * Math.abs(s);
+  out[1] = k.pelvisY - 0.03 * Math.abs(s);
   rot(out, 'pelvis', 0, -0.08 * s, 0.03 * c);
   rot(out, 'spine', 0.04, 0.12 * s, 0);
   rot(out, 'chest', 0, 0.05 * s, -0.03 * c);
@@ -97,18 +106,18 @@ function walkPose(out, phi) {
   rot(out, 'shinR', kR);
   rot(out, 'footL', 0.42 * s * 0.5 - kL * 0.35);
   rot(out, 'footR', -0.42 * s * 0.5 - kR * 0.35);
-  rot(out, 'upperArmL', 0.36 * s, 0, 0.1);
-  rot(out, 'upperArmR', -0.36 * s, 0, -0.1);
+  rot(out, 'upperArmL', 0.36 * s, 0, 0.1 + k.armZ);
+  rot(out, 'upperArmR', -0.36 * s, 0, -0.1 - k.armZ);
   rot(out, 'foreArmL', -0.25 - 0.2 * Math.max(0, -s));
   rot(out, 'foreArmR', -0.25 - 0.2 * Math.max(0, s));
   return out;
 }
 
-function runPose(out, phi) {
-  restPose(out);
+function runPose(out, phi, k = DEFAULT_PROPORTIONS) {
+  restPose(out, k);
   const s = Math.sin(phi);
   const c = Math.cos(phi);
-  out[1] = PELVIS_Y - 0.06 + 0.05 * Math.abs(s);
+  out[1] = k.pelvisY - 0.06 + 0.05 * Math.abs(s);
   rot(out, 'pelvis', 0, -0.14 * s, 0.04 * c);
   rot(out, 'spine', 0.2, 0.2 * s, 0);
   rot(out, 'chest', 0.04, 0.08 * s, 0);
@@ -121,15 +130,15 @@ function runPose(out, phi) {
   rot(out, 'shinR', kR);
   rot(out, 'footL', 0.3 - kL * 0.25);
   rot(out, 'footR', 0.3 - kR * 0.25);
-  rot(out, 'upperArmL', 0.75 * s, 0, 0.16);
-  rot(out, 'upperArmR', -0.75 * s, 0, -0.16);
+  rot(out, 'upperArmL', 0.75 * s, 0, 0.16 + k.armZ);
+  rot(out, 'upperArmR', -0.75 * s, 0, -0.16 - k.armZ);
   rot(out, 'foreArmL', -1.45);
   rot(out, 'foreArmR', -1.45);
   return out;
 }
 
-function airPose(out, t, vy) {
-  restPose(out);
+function airPose(out, t, vy, k = DEFAULT_PROPORTIONS) {
+  restPose(out, k);
   const rise = THREE.MathUtils.clamp(vy / 5, -1, 1);
   rot(out, 'spine', 0.1 - 0.1 * rise);
   rot(out, 'thighL', -0.75 + 0.2 * rise);
@@ -147,8 +156,8 @@ function airPose(out, t, vy) {
 // Static poses (anchored interactions). `p` = params, `t` = time.
 // ---------------------------------------------------------------------------
 const STATIC_POSES = {
-  sit(out, t, p) {
-    restPose(out);
+  sit(out, t, p, k) {
+    restPose(out, k);
     out[1] = (p.seatHeight ?? 0.46) + 0.09;
     const b = Math.sin(t * 1.4);
     rot(out, 'spine', 0.06 + 0.015 * b);
@@ -164,8 +173,8 @@ const STATIC_POSES = {
     rot(out, 'foreArmR', -0.85);
     return out;
   },
-  sitTable(out, t, p) {
-    STATIC_POSES.sit(out, t, p);
+  sitTable(out, t, p, k) {
+    STATIC_POSES.sit(out, t, p, k);
     rot(out, 'spine', 0.16);
     rot(out, 'upperArmL', -0.8, 0, 0.15);
     rot(out, 'upperArmR', -0.85, 0, -0.15);
@@ -173,9 +182,9 @@ const STATIC_POSES = {
     rot(out, 'foreArmR', -1.1, -0.3);
     return out;
   },
-  kneel(out) {
-    restPose(out);
-    out[1] = 0.56;
+  kneel(out, t, p, k = DEFAULT_PROPORTIONS) {
+    restPose(out, k);
+    out[1] = k.kneelY;
     out[2] = -0.05;
     rot(out, 'spine', 0.3);
     rot(out, 'thighL', -0.15, 0, 0.06);
@@ -191,8 +200,8 @@ const STATIC_POSES = {
     return out;
   },
   /** On the back, head towards -Z of the anchor, one knee up, an arm behind the head. */
-  lay(out, t) {
-    restPose(out);
+  lay(out, t, p, k) {
+    restPose(out, k);
     out[0] = 0;
     out[1] = 0.14;
     out[2] = 0.05;
@@ -213,8 +222,8 @@ const STATIC_POSES = {
     rot(out, 'footR', 0.1);
     return out;
   },
-  drive(out, t, p) {
-    restPose(out);
+  drive(out, t, p, k) {
+    restPose(out, k);
     out[1] = (p.seatHeight ?? 0.3) + 0.09;
     const steer = p.steer ?? 0;
     rot(out, 'spine', -0.12);
@@ -239,14 +248,23 @@ export class CharacterRig {
    * @param {object} [o]
    * @param {number} [o.femininity] 0 = masculine … 1 = feminine body profile
    */
-  constructor({ femininity = 1 } = {}) {
-    // Skinned, morphable body; the animator drives its bones by name.
-    this.body = new CharacterMesh({ femininity });
+  constructor({ femininity = 1, asset = null } = {}) {
+    // Skinned body (procedural & morphable, or authored glTF); the animator
+    // drives its bones by name.
+    this.body = new CharacterMesh({ femininity, asset });
     this.root = this.body.root;
     this.joints = this.body.bones;
+    this.proportions = { ...DEFAULT_PROPORTIONS };
+    if (this.body.isAuthored) {
+      const R = this.body.rest.A;
+      this.proportions.pelvisY = R.pelvis.y;
+      this.proportions.kneelY = (R.thighL.y - R.shinL.y) + 0.12;
+      // The authored bind pose already holds the arms ~0.12 rad from the body.
+      this.proportions.armZ = -0.08;
+    }
 
     // Animator state
-    this.output = restPose(new Float32Array(POSE_SIZE));
+    this.output = restPose(new Float32Array(POSE_SIZE), this.proportions);
     this.from = new Float32Array(this.output);
     this.target = null; // null = locomotion, else { name, params }
     this.fadeT = 1;
@@ -314,7 +332,7 @@ export class CharacterRig {
 
     // Target pose.
     const tgt = this._target;
-    if (this.target) STATIC_POSES[this.target.name](tgt, this.time, this.target.params);
+    if (this.target) STATIC_POSES[this.target.name](tgt, this.time, this.target.params, this.proportions);
     else tgt.set(this._loco);
 
     // Cross-fade from the frozen snapshot.
@@ -344,19 +362,20 @@ export class CharacterRig {
     const stride = THREE.MathUtils.lerp(1.25, 2.5, wr);
     if (this._input.grounded) this.phase += (Math.max(s, 0.25 * ww) / stride) * Math.PI * 2 * dt;
 
+    const k = this.proportions;
     const loco = this._loco;
-    idlePose(loco, this.time);
+    idlePose(loco, this.time, k);
     for (let i = 0; i < POSE_SIZE; i++) loco[i] *= wi;
     if (ww > 0) {
-      walkPose(this._tmpA, this.phase);
+      walkPose(this._tmpA, this.phase, k);
       for (let i = 0; i < POSE_SIZE; i++) loco[i] += this._tmpA[i] * ww;
     }
     if (wr > 0) {
-      runPose(this._tmpB, this.phase);
+      runPose(this._tmpB, this.phase, k);
       for (let i = 0; i < POSE_SIZE; i++) loco[i] += this._tmpB[i] * wr;
     }
     if (this.airW > 0.001) {
-      airPose(this._tmpA, this.time, this._input.vy);
+      airPose(this._tmpA, this.time, this._input.vy, k);
       const a = this.airW;
       for (let i = 0; i < POSE_SIZE; i++) loco[i] = loco[i] * (1 - a) + this._tmpA[i] * a;
     }

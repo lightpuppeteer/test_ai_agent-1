@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Character Viewer</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1d1b19;
+        overflow: hidden;
+        font: 13px/1.4 system-ui, sans-serif;
+        color: #eee7dc;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      #ui {
+        position: fixed;
+        left: 12px;
+        top: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        max-width: calc(100vw - 24px);
+      }
+      #ui button {
+        background: #2c2925cc;
+        color: inherit;
+        border: 1px solid #5a534a;
+        border-radius: 6px;
+        padding: 5px 10px;
+        cursor: pointer;
+      }
+      #ui button.on {
+        background: #b9803c;
+        border-color: #e0a85e;
+        color: #1d1b19;
+      }
+      #status {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="ui"></div>
+    <div id="status">Loading…</div>
+    <script type="module" src="/src/tools/CharacterViewer.js"></script>
+  </body>
+</html>

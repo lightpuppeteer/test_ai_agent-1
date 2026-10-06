@@ -345,10 +345,26 @@ const _pt = { x: 0, y: 0 };
  *    building on the same skeleton, and profile-aware collision capsules.
  */
 export class CharacterMesh {
-  constructor({ femininity = 0 } = {}) {
+  /**
+   * @param {object} [o]
+   * @param {number} [o.femininity] procedural body only: 0 = masculine … 1 = feminine
+   * @param {import('./CharacterAsset.js').CharacterAsset|null} [o.asset] authored body (Blender glTF).
+   *   Its joint positions become this skeleton's rest pose and its meshes are rebound to it.
+   */
+  constructor({ femininity = 0, asset = null } = {}) {
+    this.asset = asset;
     this.profiles = { A: BODY_PROFILES.masculine, B: BODY_PROFILES.feminine };
-    this.rest = { A: restPositions(this.profiles.A), B: restPositions(this.profiles.B) };
-    this.segs = { A: buildSegments(this.profiles.A, this.rest.A), B: buildSegments(this.profiles.B, this.rest.B) };
+    if (asset) {
+      const fallback = restPositions(this.profiles.B);
+      const rest = Object.fromEntries(BONES.map((b) => [b, asset.rest[b]?.clone() ?? fallback[b]]));
+      this.rest = { A: rest, B: rest };
+      this.segs = null;
+      this.extraBones = asset.extraJoints(BONES);
+    } else {
+      this.rest = { A: restPositions(this.profiles.A), B: restPositions(this.profiles.B) };
+      this.segs = { A: buildSegments(this.profiles.A, this.rest.A), B: buildSegments(this.profiles.B, this.rest.B) };
+      this.extraBones = [];
+    }
     this.delta = BONES.map((b) => this.rest.B[b].clone().sub(this.rest.A[b]));
     this.femininity = 0;
     this.morphables = [];
@@ -356,11 +372,25 @@ export class CharacterMesh {
     this.root = new THREE.Group();
     this.root.name = 'Character';
     this._createSkeleton();
-    this._createBody();
-    this._createFace();
+    if (asset) this._createAssetBody();
+    else {
+      this._createBody();
+      this._createFace();
+    }
     this.root.updateMatrixWorld(true);
     this.body.bind(this.skeleton);
-    this.setFemininity(femininity);
+    for (const m of this.assetMeshes ?? []) if (m !== this.body) m.bind(this.skeleton, this.body.bindMatrix);
+    this.setFemininity(asset ? 1 : femininity);
+  }
+
+  /** Whether this body is an authored (glTF) character rather than the procedural loft. */
+  get isAuthored() {
+    return !!this.asset;
+  }
+
+  /** Pelvis rest height (the animator's standing reference). */
+  get pelvisHeight() {
+    return this.rest.A.pelvis.y;
   }
 
   // ---------------------------------------------------------------------------
@@ -384,7 +414,71 @@ export class CharacterMesh {
         this.bones[name].position.copy(p);
       }
     }
-    this.skeleton = new THREE.Skeleton(BONES.map((n) => this.bones[n]));
+    // Extra authored joints (spring chains…), appended after the animated ones
+    // so BONE_INDEX stays valid.
+    for (const name of this.extraBones) {
+      const b = new THREE.Bone();
+      b.name = name;
+      const parent = this.asset.parents[name];
+      const pRest = this.asset.rest[parent];
+      this.bones[parent].add(b);
+      b.position.copy(this.asset.rest[name]).sub(pRest);
+      this.bones[name] = b;
+    }
+    this.skeleton = new THREE.Skeleton([...BONES, ...this.extraBones].map((n) => this.bones[n]));
+    this.boneIndex = Object.fromEntries(this.skeleton.bones.map((b, i) => [b.name, i]));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Authored body (glTF)
+  // ---------------------------------------------------------------------------
+  /** Parts that are always worn (the body itself and the face). */
+  static get ASSET_BASE_PARTS() {
+    return ['Body', 'Eyes', 'Cornea', 'Eyebrows', 'Eyelashes', 'Teeth', 'Tongue'];
+  }
+
+  _createAssetBody() {
+    this.assetMeshes = [];
+    this.coverMask = new THREE.Vector4(0, 0, 0, 0);
+    for (const name of CharacterMesh.ASSET_BASE_PARTS) {
+      if (!this.asset.parts.has(name)) continue;
+      const mesh = this._assetMesh(name, assetMaterial(name, this.asset.parts.get(name).material, this.coverMask));
+      if (name === 'Body') this.body = mesh;
+      this.root.add(mesh);
+      this.assetMeshes.push(mesh);
+    }
+    this.skinMaterial = this.body.material;
+  }
+
+  /** SkinnedMesh for an asset part, with its joints remapped onto this skeleton (not yet bound). */
+  _assetMesh(name, material) {
+    const part = this.asset.parts.get(name);
+    if (!part) throw new Error(`CharacterMesh: the character asset has no part "${name}"`);
+    const geometry = part.geometry.clone();
+    const si = geometry.attributes.skinIndex;
+    const remap = part.joints.map((j) => this.boneIndex[j] ?? this.boneIndex[this.asset.parents[j]] ?? 0);
+    const out = new Uint16Array(si.count * 4);
+    for (let i = 0; i < si.count; i++) for (let k = 0; k < 4; k++) out[i * 4 + k] = remap[si.getComponent(i, k)];
+    geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(out, 4));
+    const mesh = new THREE.SkinnedMesh(geometry, material);
+    mesh.name = name;
+    mesh.castShadow = name !== 'Eyelashes' && name !== 'Eyebrows';
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    return mesh;
+  }
+
+  /** Attaches an authored garment / hair part (by glTF node name). */
+  attachAssetPart(name, material) {
+    const mesh = this._assetMesh(name, material);
+    this.root.add(mesh);
+    mesh.bind(this.skeleton, this.body.bindMatrix);
+    return mesh;
+  }
+
+  /** Coverage channels (x, y, z, w) of the body's `_COVER` attribute to hide (0/1 each). */
+  setCoverage(mask) {
+    if (this.coverMask) this.coverMask.copy(mask);
   }
 
   _segmentNames() {
@@ -533,6 +627,7 @@ export class CharacterMesh {
   setFemininity(f) {
     f = THREE.MathUtils.clamp(f, 0, 1);
     this.femininity = f;
+    if (this.asset) return; // authored bodies have a single, fixed profile
     for (const m of this.morphables) {
       if (!m.morphTargetInfluences) m.updateMorphTargets();
       m.morphTargetInfluences[0] = f;
@@ -554,6 +649,7 @@ export class CharacterMesh {
   // ---------------------------------------------------------------------------
   /** Hides body regions (by name) covered by garments; shows the rest. */
   setHiddenRegions(names) {
+    if (this.asset) return; // authored bodies use coverage channels (setCoverage)
     const hidden = new Set(names);
     for (const g of this.body.geometry.groups) g.materialIndex = hidden.has(REGIONS[g.region]) ? 1 : 0;
   }
@@ -568,6 +664,7 @@ export class CharacterMesh {
    * @param {object[]} parts [{ segment, t0, t1, rings, radial?, inflate, capStart?, capEnd? }]
    */
   buildGarmentGeometry(parts) {
+    if (this.asset) throw new Error('CharacterMesh: lofted garments need the procedural body');
     const accA = createAccumulator();
     const accB = createAccumulator();
     for (const part of parts) {
@@ -626,6 +723,11 @@ export class CharacterMesh {
    * Use with `skinPoint` to get its animated world position every frame.
    */
   sampleSurface(segment, t, a, inflate = 0) {
+    if (this.asset) {
+      if (segment !== 'torso') throw new Error(`CharacterMesh: authored bodies only sample the torso (got "${segment}")`);
+      const { point, weights } = this.asset.sampleTorso(this.asset.mapTorsoHeight(t), a, inflate);
+      return { a: point, b: point.clone(), weights: weights.map(([n, w]) => [this.boneIndex[n] ?? 0, w]) };
+    }
     const pts = ['A', 'B'].map((P) => {
       const seg = this.segs[P][segment];
       seg.frame(t, _o, _u, _vv);
@@ -656,6 +758,7 @@ export class CharacterMesh {
    * @returns {{name:string, a:THREE.Vector3, b:THREE.Vector3, r:number}[]}
    */
   getCapsules(out = [], inflate = 0) {
+    if (this.asset) return this._assetCapsules(out, inflate);
     const f = this.femininity;
     CAPSULES.forEach((c, i) => {
       const cap = (out[i] ??= { name: c.name, a: new THREE.Vector3(), b: new THREE.Vector3(), r: 0 });
@@ -670,6 +773,121 @@ export class CharacterMesh {
     out.length = CAPSULES.length;
     return out;
   }
+
+  /** Capsules derived from the authored skeleton's joints (same names as the procedural set). */
+  _assetCapsules(out, inflate) {
+    if (!this._capDefs) {
+      const R = this.rest.A;
+      const v = (x, y, z) => new THREE.Vector3(x, y, z);
+      const lerp = (a, b, k) => a.clone().lerp(b, k);
+      const shoulderY = (R.upperArmL.y + R.upperArmR.y) / 2;
+      const hipX = Math.abs(R.thighL.x) * 0.8;
+      const z = R.spine.z;
+      this._capDefs = [
+        { name: 'hips', bone: 'pelvis', a: v(-hipX, R.pelvis.y - 0.03, z - 0.01), b: v(hipX, R.pelvis.y - 0.03, z - 0.01), r: 0.112 },
+        { name: 'belly', bone: 'spine', a: v(0, R.spine.y - 0.02, z), b: v(0, lerp(R.spine, R.upperArmL, 0.35).y, z), r: 0.1 },
+        { name: 'chest', bone: 'chest', a: v(0, R.chest.y + 0.05, z + 0.01), b: v(0, shoulderY - 0.05, z), r: 0.112 },
+        { name: 'shoulders', bone: 'chest', a: v(-0.12, shoulderY + 0.01, z), b: v(0.12, shoulderY + 0.01, z), r: 0.072 },
+        { name: 'head', bone: 'head', a: v(0, R.head.y + 0.09, R.head.z + 0.02), b: v(0, R.head.y + 0.1, R.head.z + 0.02), r: 0.1 },
+        ...['L', 'R'].flatMap((s) => [
+          { name: 'thigh', bone: `thigh${s}`, a: R[`thigh${s}`].clone(), b: lerp(R[`thigh${s}`], R[`shin${s}`], 0.92), r: 0.082 },
+          { name: 'shin', bone: `shin${s}`, a: R[`shin${s}`].clone(), b: lerp(R[`shin${s}`], R[`foot${s}`], 0.95), r: 0.052 },
+          { name: 'upperArm', bone: `upperArm${s}`, a: R[`upperArm${s}`].clone(), b: lerp(R[`upperArm${s}`], R[`foreArm${s}`], 0.92), r: 0.048 },
+          { name: 'foreArm', bone: `foreArm${s}`, a: R[`foreArm${s}`].clone(), b: lerp(R[`foreArm${s}`], R[`hand${s}`], 0.95), r: 0.038 },
+        ]),
+      ];
+    }
+    this._capDefs.forEach((c, i) => {
+      const cap = (out[i] ??= { name: c.name, a: new THREE.Vector3(), b: new THREE.Vector3(), r: 0 });
+      const bone = this.bones[c.bone];
+      const rest = this.rest.A[c.bone];
+      cap.a.copy(c.a).sub(rest).applyMatrix4(bone.matrixWorld);
+      cap.b.copy(c.b).sub(rest).applyMatrix4(bone.matrixWorld);
+      cap.r = c.r + inflate;
+    });
+    out.length = this._capDefs.length;
+    return out;
+  }
+}
+
+/**
+ * Stylised materials for authored character parts, keeping the glTF's baked
+ * textures (albedo, normal, roughness) and the game's lighting model.
+ */
+function assetMaterial(name, src, coverMask) {
+  const tex = (k) => src?.[k] ?? null;
+  const common = { name: `Asset:${name}`, map: tex('map'), color: src?.color?.getHex?.() ?? 0xffffff };
+  let m;
+  if (name === 'Body') {
+    m = createStylizedMaterial({
+      ...common,
+      roughness: 0.55,
+      wrap: 0.62,
+      softness: 0.62,
+      rim: 0.22,
+      painterly: 0.0,
+      uniforms: { uCoverMask: { value: coverMask } },
+      cacheKey: 'asset-skin;cover;',
+      patch: patchCoverage,
+    });
+  } else if (name === 'Eyes') {
+    m = createStylizedMaterial({ ...common, roughness: 0.35, wrap: 0.5, rim: 0.0, painterly: 0, envMapIntensity: 0.6 });
+  } else if (name === 'Cornea') {
+    // Clear, wet cornea: only its specular highlight shows.
+    m = createStylizedMaterial({
+      ...common,
+      map: null,
+      color: 0xffffff,
+      roughness: 0.03,
+      rim: 0,
+      painterly: 0,
+      transparent: true,
+      opacity: 0.08,
+      envMapIntensity: 1.4,
+    });
+    m.depthWrite = false;
+  } else if (name === 'Eyebrows' || name === 'Eyelashes' || name === 'Hair') {
+    const hair = name === 'Hair';
+    m = createStylizedMaterial({
+      ...common,
+      // Brows/lashes textures are dark-on-alpha: tint them towards the hair colour.
+      color: hair ? 0xffffff : name === 'Eyebrows' ? 0xa07a62 : 0x3a2a22,
+      roughness: hair ? 0.42 : 0.7,
+      wrap: 0.6,
+      rim: hair ? 0.35 : 0.05,
+      painterly: 0,
+      alphaTest: hair ? 0.6 : 0,
+      side: THREE.DoubleSide,
+    });
+    // Brows and lashes are fine, soft strands: alpha-blend them (they sit on the
+    // skin, so sorting never matters) instead of a hard-cut band.
+    if (!hair) {
+      m.transparent = true;
+      m.depthWrite = false;
+      m.alphaTest = 0.02;
+    }
+  } else {
+    m = createStylizedMaterial({ ...common, roughness: src?.roughness ?? 0.6, metalness: src?.metalness ?? 0, painterly: 0 });
+  }
+  if (src?.normalMap) {
+    m.normalMap = src.normalMap;
+    m.normalScale.copy(src.normalScale ?? new THREE.Vector2(1, 1));
+  }
+  if (src?.roughnessMap) m.roughnessMap = src.roughnessMap;
+  return m;
+}
+
+/** Drops skin fragments covered by the current outfit (see CharacterAsset `_COVER`). */
+function patchCoverage(shader) {
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute vec4 _cover;\nvarying vec4 vCover;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCover = _cover;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform vec4 uCoverMask;\nvarying vec4 vCover;')
+    .replace(
+      '#include <clipping_planes_fragment>',
+      '#include <clipping_planes_fragment>\nif (dot(vCover, uCoverMask) > 0.5) discard;',
+    );
 }
 
 const _c = new THREE.Color();
