@@ -96,7 +96,7 @@ var audio: Node = null
 var quests: Node = null
 
 ## Her name in dialogue boxes.
-const HER_NAME := "Her"
+const HER_NAME := "Tatiana"
 
 ## "outside" or the id of the interior you're in ("pizza", "cinema", "house", "hotel").
 var location := "outside"

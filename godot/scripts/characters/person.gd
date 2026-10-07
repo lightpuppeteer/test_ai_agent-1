@@ -492,8 +492,8 @@ func _attach_accessory(acc: String) -> void:
 			root.get_child(0).rotation.x = -PI * 0.5
 		"yoggi":
 			bone = "torso"
-			var cat := Props.model("cube-pets/animal-cat")
-			cat.scale = Vector3.ONE * 0.16
+			var cat := Yoggi.make_model()
+			cat.scale = Vector3(0.18, 0.16, 0.17)
 			cat.position = Vector3(0, -0.02, 0.17)
 			var ap: AnimationPlayer = cat.find_child("AnimationPlayer", true, false)
 			if ap and ap.has_animation("idle"):

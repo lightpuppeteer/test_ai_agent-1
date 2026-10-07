@@ -113,7 +113,7 @@ const QUESTS := [
 			{"type": "enter", "place": "house", "text": "Go inside"},
 			{"type": "decorate", "text": "Decorate: living room, bedroom and office (use the boxes)"},
 			{"type": "dialogue", "tree": "moving_in"},
-			{"type": "go", "to": "her_place", "radius": 6.0, "text": "Go to her place to get Yoggi"},
+			{"type": "go", "to": "her_place", "radius": 6.0, "text": "Go to your old place to get Yoggi"},
 			{"type": "catch", "text": "Catch Yoggi (he's fast — keep trying!)"},
 			{"type": "enter", "place": "house", "carrying": "yoggi", "text": "Bring Yoggi home", "then": ["yoggi_home"]},
 			{"type": "dialogue", "tree": "yoggi_home"},

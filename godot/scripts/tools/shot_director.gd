@@ -32,6 +32,7 @@ const VIEWS := {
 	"fireworks": {"action": "_act_fireworks"},
 	"carkiss": {"action": "_act_carkiss"},
 	"night": {"action": "_act_night"},
+	"cats": {"action": "_act_cats"},
 }
 
 var cam: Camera3D
@@ -242,6 +243,19 @@ func _act_closeup() -> void:
 func _act_golden() -> void:
 	Game.atmosphere.set_preset("golden")
 	await _place(Vector3(6, 0, -48), PI * 0.95, PI * 0.95, -12.0, 9.0)
+
+
+func _act_cats() -> void:
+	var y: Node3D = Places.spot("yoggi") if Places.spot("yoggi") else null
+	if y == null:
+		for n in get_tree().root.find_children("*", "Yoggi", true, false):
+			y = n
+	var mochi: Node3D = get_tree().current_scene.get_node("Villager_Mochi")
+	mochi.set_physics_process(false)
+	mochi.global_position = y.global_position + Vector3(1.6, 0, 0)
+	await _place(y.global_position + Vector3(0.8, 0, 3.2), PI, 0.0, -14.0, 4.5)
+	Game.camera_rig.yaw = 0.0
+	await _frames(20)
 
 
 func _act_night() -> void:

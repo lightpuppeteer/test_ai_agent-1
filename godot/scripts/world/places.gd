@@ -401,7 +401,7 @@ func _house_walls(room: Interior) -> void:
 
 func _her_place() -> void:
 	B.house(-28.0, -23.0, 0.0, "a", Color(0.95, 0.55, 0.7), 1.25)
-	var l := Props3D.room_label("Her place ✿", 0.008, Color(0.9, 0.45, 0.6))
+	var l := Props3D.room_label(Game.HER_NAME + "'s place ✿", 0.008, Color(0.9, 0.45, 0.6))
 	add_child(l)
 	l.global_position = Vector3(-24.5, B.ground(-24.5, -18.0) + 1.5, -18.0)
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED

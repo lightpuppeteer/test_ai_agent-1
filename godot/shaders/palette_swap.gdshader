@@ -27,15 +27,20 @@ vec3 hsv2rgb(vec3 c) {
 	return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
 }
 
-vec3 swap(vec3 c, vec3 from, vec3 to) {
+float matches(vec3 c, vec3 from) {
+	vec3 h = rgb2hsv(c);
+	vec3 hf = rgb2hsv(from);
+	float dh = abs(h.x - hf.x);
+	dh = min(dh, 1.0 - dh);
+	return step(dh, 0.045) * step(abs(h.y - hf.y), 0.16);
+}
+
+vec3 swapped(vec3 c, vec3 from, vec3 to) {
 	vec3 h = rgb2hsv(c);
 	vec3 hf = rgb2hsv(from);
 	vec3 ht = rgb2hsv(to);
-	float dh = abs(h.x - hf.x);
-	dh = min(dh, 1.0 - dh);
-	float m = step(dh, 0.045) * step(abs(h.y - hf.y), 0.16);
 	vec3 n = vec3(ht.x, clamp(h.y * ht.y / max(hf.y, 0.01), 0.0, 1.0), clamp(h.z * ht.z / max(hf.z, 0.01), 0.0, 1.0));
-	return mix(c, hsv2rgb(n), m);
+	return hsv2rgb(n);
 }
 
 void vertex() {
@@ -43,10 +48,12 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 c = texture(albedo_tex, UV).rgb;
-	c = swap(c, from_a, to_a);
+	// Both swaps test the ORIGINAL texel, so a recoloured texel can't be swapped twice.
+	vec3 o = texture(albedo_tex, UV).rgb;
+	vec3 c = mix(o, swapped(o, from_a, to_a), matches(o, from_a));
 	if (use_b) {
-		c = swap(c, from_b, to_b);
+		float mb = matches(o, from_b) * (1.0 - matches(o, from_a));
+		c = mix(c, swapped(o, from_b, to_b), mb);
 	}
 	ALBEDO = c;
 	ROUGHNESS = roughness;

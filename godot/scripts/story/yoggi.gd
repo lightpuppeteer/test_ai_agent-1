@@ -1,6 +1,6 @@
 class_name Yoggi
 extends CharacterBody3D
-## Her cat. Lives in her garden until the move; during "Operation Catch Yoggi"
+## Her cat: a chunky British Shorthair, blue-grey plush coat, green eyes. Lives in her garden until the move; during "Operation Catch Yoggi"
 ## he dodges you a few times before accepting the catnip bribe. Afterwards he
 ## lives in our house and judges everyone.
 
@@ -28,6 +28,16 @@ const LINES_HOUSE := [
 ]
 
 
+## The Kenney cube-pets cat recoloured as Yoggi (also used when he's carried).
+static func make_model() -> Node3D:
+	var m := Props.model("cube-pets/animal-cat")
+	Props.recolor(m, {
+		Color8(255, 180, 73): Color8(120, 205, 95),     # orange eyes -> green
+		Color8(126, 130, 152): Color8(146, 156, 178),   # coat -> lighter British blue
+	})
+	return m
+
+
 func _ready() -> void:
 	collision_layer = Game.PHYS_CHARACTERS
 	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_WALLS
@@ -43,13 +53,18 @@ func _ready() -> void:
 	var vis := Node3D.new()
 	vis.rotation.y = PI
 	add_child(vis)
-	model = Props.model("cube-pets/animal-cat")
-	model.scale = Vector3.ONE * 0.5
+	model = make_model()
+	model.scale = Vector3(0.56, 0.5, 0.53)      # a little rounder: British Shorthair build
 	vis.add_child(model)
-	# A collar so you can tell him apart from Mochi.
-	var collar := Props3D.blocks([Props3D.b(Vector3(0.9, 0.12, 0.9), Vector3(0, 0.0, 0), Color(0.95, 0.35, 0.45), {"bevel": 0.03})])
-	collar.position = Vector3(0, 0.55, 0.35)
-	collar.scale = Vector3.ONE * 0.5
+	# A pink collar with a little bell, low on the front of his (very round) face.
+	var bb := Props.model_aabb("cube-pets/animal-cat")
+	var front := (bb.position.z + bb.size.z) * model.scale.z
+	var w := bb.size.x * model.scale.x
+	var collar := Props3D.blocks([
+		Props3D.b(Vector3(w + 0.03, 0.06, 0.34), Vector3(0, 0, -0.15), Color(0.95, 0.35, 0.45), {"bevel": 0.02}),
+		Props3D.b(Vector3(0.08, 0.08, 0.06), Vector3(0, -0.06, 0.03), Color(1.0, 0.85, 0.35), {"mat": "shiny", "bevel": 0.03}),
+	])
+	collar.position = Vector3(0, bb.position.y * model.scale.y + 0.22, front + 0.005)
 	vis.add_child(collar)
 	var tag := Label3D.new()
 	tag.text = "Yoggi"

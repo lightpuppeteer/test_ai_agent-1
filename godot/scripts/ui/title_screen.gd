@@ -6,7 +6,7 @@ extends CanvasLayer
 signal started
 
 @export var game_title := "Our Little Island"
-@export var tagline := "a year of memories"
+@export var tagline := "Tatiana & Marco · a year of memories"
 
 var _cam: Camera3D
 var _t := 0.0

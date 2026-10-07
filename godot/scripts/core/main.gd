@@ -3,6 +3,8 @@ extends Node3D
 
 const VILLAGERS := [
 	{"species": "animal-cat", "name": "Mochi", "pos": Vector3(-4.0, 0, -6.0), "color": Color(0.98, 0.62, 0.45), "voice": 1.15,
+		# A ginger cat, so Yoggi is the only grey one on the island.
+		"recolor": {Color8(126, 130, 152): Color8(236, 160, 96), Color8(255, 180, 73): Color8(110, 170, 240)},
 		"lines": ["Oh! Hello, hello! Isn't the fountain extra sparkly today?",
 			"I'm practising my café order. Uma bica, por favor! ...Was that right? Don't tell me.",
 			"I saw you two at the pizza place. He dropped a pepperoni. I saw EVERYTHING.",
@@ -76,6 +78,7 @@ func _ready() -> void:
 		vil.color = v["color"]
 		vil.lines.assign(v["lines"])
 		vil.voice = v.get("voice", 1.0)
+		vil.recolor = v.get("recolor", {})
 		var p: Vector3 = v["pos"]
 		p.y = terrain.height_at(p.x, p.z) + 0.2
 		vil.position = p

@@ -4,6 +4,8 @@ extends CharacterBody3D
 ## dances now and then, and chats when you press E.
 
 @export var species := "animal-cat"
+## Optional palette recolour {Color(from): Color(to)} for the model.
+var recolor := {}
 @export var display_name := "Mochi"
 @export var color := Color(0.98, 0.62, 0.45)
 @export var lines: Array[String] = ["Hi there!"]
@@ -43,6 +45,8 @@ func _ready() -> void:
 	add_child(visual)
 	model = Props.model("cube-pets/" + species)
 	model.scale = Vector3.ONE * Props.kit_scale("cube-pets/" + species)
+	if not recolor.is_empty():
+		Props.recolor(model, recolor)
 	visual.add_child(model)
 	anim = model.find_child("AnimationPlayer", true, false)
 	for n in ["idle", "walk", "run", "eat", "dance"]:
