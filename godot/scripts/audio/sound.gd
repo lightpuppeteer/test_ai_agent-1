@@ -209,7 +209,7 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).physical_keycode == KEY_M:
+	if event.is_action_pressed("music"):
 		var m := toggle_music()
 		if Game.hud:
 			Game.hud.toast("♪ Music off" if m else "♪ Music on")

@@ -11,6 +11,7 @@ const VIEWS := {
 	"beach": {"pos": Vector3(14, 6, 34), "look": Vector3(0, 1, 18)},
 	"hill": {"pos": Vector3(40, 14, -20), "look": Vector3(20, 5, -44)},
 	"start": {"action": "_act_start"},
+	"startfar": {"action": "_act_start", "pos": Vector3(14, 10, 30), "look": Vector3(2, 2, 13)},
 	"walk": {"action": "_act_walk"},
 	"sit": {"action": "_act_sit"},
 	"lie": {"action": "_act_lie"},
@@ -19,6 +20,17 @@ const VIEWS := {
 	"closeup": {"action": "_act_closeup"},
 	"golden": {"action": "_act_golden"},
 	"title": {"action": "_act_title"},
+	"her": {"action": "_act_her"},
+	"pizza": {"action": "_act_pizza"},
+	"choices": {"action": "_act_choices"},
+	"cinema": {"action": "_act_cinema"},
+	"spa": {"action": "_act_spa"},
+	"house": {"action": "_act_house"},
+	"garden": {"action": "_act_garden"},
+	"oasis": {"action": "_act_oasis"},
+	"causeway": {"action": "_act_causeway"},
+	"fireworks": {"action": "_act_fireworks"},
+	"carkiss": {"action": "_act_carkiss"},
 	"night": {"action": "_act_night"},
 }
 
@@ -63,6 +75,7 @@ func _run() -> void:
 		var path: String = dir.path_join(n + ".png")
 		Game.save_screenshot(path)
 		log_line("[shots] %s  fps=%d" % [path, Engine.get_frames_per_second()])
+		_log_arm()
 		await _reset()
 	var f := FileAccess.open(dir.path_join("log.txt"), FileAccess.WRITE)
 	if f:
@@ -71,6 +84,24 @@ func _run() -> void:
 	if FileAccess.file_exists("res://shots_request.cfg"):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://shots_request.cfg"))
 	get_tree().quit()
+
+
+func _log_arm() -> void:
+	var rig: CameraRig = Game.camera_rig
+	if rig == null:
+		return
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = rig.arm.shape
+	q.collision_mask = rig.arm.collision_mask
+	q.transform = Transform3D(Basis(), rig.global_position)
+	var hits := rig.get_world_3d().direct_space_state.intersect_shape(q, 8)
+	var names := PackedStringArray()
+	for h in hits:
+		var col: Object = h["collider"]
+		names.append(str((col as Node).get_path()) if col is Node else str(col))
+	var vc := get_viewport().get_camera_3d()
+	log_line("[cam] %s at %s fwd %s near %.2f" % [vc.get_path(), vc.global_position, -vc.global_transform.basis.z, vc.near])
+	log_line("[arm] len=%.2f hit=%.2f dist=%.2f at=%s start_hits=%s" % [rig.arm.spring_length, rig.arm.get_hit_length(), rig.distance, rig.global_position, ",".join(names)])
 
 
 func _frames(n: int) -> void:
@@ -83,7 +114,28 @@ func _game_cam() -> void:
 		Game.camera_rig.camera.current = true
 
 
+func _reset_story() -> void:
+	Game.story_lock = false
+	if Game.hud._choices_shown or Game.hud.is_dialogue_open():
+		Game.hud._pending_choices = []
+		Game.hud._choices_shown = false
+		Game.hud.choice_box.visible = false
+		Game.hud.dialogue.visible = false
+	if Game.location != "outside":
+		await Places.travel(QuestData.LANDMARKS["spawn"], PI, "outside")
+	Cutscene._fireworks_on = false
+	Game.camera_rig.end_cinematic()
+	for acc in ["cucumbers", "popcorn", "pepperoni", "yoggi"]:
+		Game.player.set_accessory(acc, false)
+		Game.partner.set_accessory(acc, false)
+	Game.player.release_pose()
+	Game.partner.release_pose()
+	if Game.partner.pose != "move" and Game.partner.pose != "transition":
+		await Game.partner.leave_anchor()
+
+
 func _reset() -> void:
+	await _reset_story()
 	if _title:
 		_title.queue_free()
 		_title = null
@@ -206,3 +258,129 @@ func _act_title() -> void:
 
 
 var _title: TitleScreen = null
+
+
+func _inside(place: String) -> Interior:
+	var it: Interior = Places.interiors[place]
+	await Places.travel(it.global_position + it.spawn, 0.0, place)
+	await _frames(5)
+	return it
+
+
+func _sit_both(it: Interactable) -> void:
+	var p: Player = Game.player
+	p.teleport(it.global_position + Vector3(0.5, 0.2, 0.8))
+	Game.partner.teleport(it.global_position + Vector3(-0.5, 0.2, 0.8))
+	await _frames(3)
+	p.use(it)
+	await _frames(90)
+
+
+func _act_her() -> void:
+	await _place(Vector3(2, 0, 13.4), PI, 0.0, -6.0, 3.0)
+	Game.player.set_outfit("silver_dress")
+	Game.camera_rig.yaw = 0.0
+	await _frames(20)
+
+
+func _act_pizza() -> void:
+	await _inside("pizza")
+	await _sit_both(Places.spot("pizza_table"))
+	Game.player.set_accessory("popcorn", false)
+	Game.partner.set_accessory("pepperoni", true)
+	Game.camera_rig.yaw = PI * 0.5
+	Game.camera_rig.pitch = deg_to_rad(-25.0)
+	Game.camera_rig.distance = 5.0
+
+
+func _act_choices() -> void:
+	await _inside("pizza")
+	await _sit_both(Places.spot("pizza_table"))
+	Game.camera_rig.yaw = 0.0
+	Game.camera_rig.pitch = deg_to_rad(-25.0)
+	Game.camera_rig.distance = 7.0
+	Dialogue.run(StoryData.TREES["pizza"])
+	await _frames(160)
+	Game.hud._advance()
+	await _frames(10)
+
+
+func _act_cinema() -> void:
+	await _inside("cinema")
+	Game.player.set_accessory("popcorn", true)
+	Game.partner.set_accessory("drink", true)
+	await _sit_both(Places.spot("cinema_seats"))
+	Game.world.cinema_screen.play("comedy")
+	Game.camera_rig.yaw = 0.0
+	Game.camera_rig.pitch = deg_to_rad(-12.0)
+	Game.camera_rig.distance = 6.0
+	await _frames(60)
+
+
+func _act_spa() -> void:
+	await _inside("hotel")
+	await _sit_both(Places.spot("spa_bed"))
+	Cutscene.run("cucumbers")
+	Game.camera_rig.yaw = 0.0
+	Game.camera_rig.pitch = deg_to_rad(-45.0)
+	Game.camera_rig.distance = 6.0
+	await _frames(30)
+
+
+func _act_house() -> void:
+	var it := await _inside("house")
+	Game.world.decor.load_from([
+		{"item": "sofa", "x": -3.0, "z": 3.4, "yaw": PI}, {"item": "tv", "x": -3.0, "z": 0.0, "yaw": 0.0},
+		{"item": "rug", "x": -3.0, "z": 1.8, "yaw": 0.0}, {"item": "plant", "x": -7.0, "z": 5.0, "yaw": 0.0},
+		{"item": "armchair", "x": -0.5, "z": 2.0, "yaw": -PI * 0.5}, {"item": "coffee_table", "x": -3.0, "z": 1.8, "yaw": 0.0},
+		{"item": "lamp", "x": -6.5, "z": 1.0, "yaw": 0.0}, {"item": "teddy", "x": -1.0, "z": 4.6, "yaw": 0.0},
+	])
+	Game.world.decor.begin()
+	Game.player.teleport(it.global_position + Vector3(1.0, 0.1, 4.0), PI * 0.25)
+	Game.camera_rig.yaw = PI * 0.15
+	Game.camera_rig.pitch = deg_to_rad(-40.0)
+	Game.camera_rig.distance = 9.0
+	await _frames(40)
+
+
+func _act_garden() -> void:
+	var c: Node3D = Places.spot("picnic")
+	await _place(c.global_position + Vector3(-2.0, 0, 2.0), 0.0, -PI * 0.6, -30.0, 8.0)
+	Cutscene.run("feast")
+	await _sit_both(Places.spot("picnic_blanket"))
+	await _frames(20)
+
+
+func _act_oasis() -> void:
+	var ch: Node3D = Places.spot("oasis_chest")
+	var to_road := Places.CAUSEWAY_TO - ch.global_position
+	to_road.y = 0.0
+	await _place(ch.global_position + to_road.normalized() * 1.6, atan2(to_road.x, to_road.z) + PI, 0.0, -10.0, 8.0)
+	Cutscene.run("face")
+	Cutscene.run("kneel")
+	Game.world.volcano.erupt(12.0)
+	Cutscene.run("cam:volcano")
+	await _frames(150)
+
+
+func _act_causeway() -> void:
+	await _place(Places.CAUSEWAY_FROM + Vector3(-3, 0, -3), PI * 0.8, PI * 0.8, -12.0, 9.0)
+	await _frames(30)
+
+
+func _act_fireworks() -> void:
+	Game.atmosphere.set_preset("night")
+	await _place(Vector3(0, 0, 24), PI * 0.5, PI, 8.0, 7.0)
+	Cutscene.run("fireworks")
+	Cutscene.run("cam:sky")
+	await _frames(150)
+
+
+func _act_carkiss() -> void:
+	var car: Car = get_tree().current_scene.get_node("Car")
+	await _place(car.global_position + car.global_transform.basis.x * 2.4, 0.0, PI * 0.6, -18.0, 9.0)
+	await Game.player.enter_car(car)
+	await _frames(200)
+	Cutscene.run("kiss")
+	Game.camera_rig.distance = 5.0
+	await _frames(30)

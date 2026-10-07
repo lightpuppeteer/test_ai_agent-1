@@ -10,6 +10,8 @@ signal used(by: Node, seat: Node3D)
 @export var prompt := "Sit"
 @export var radius := 1.8            ## how close the player must be (from this node's origin)
 @export var enabled := true
+## Quest hook: quests can wait for "use" on this tag (see QuestData).
+@export var tag := ""
 
 var seats: Array[Node3D] = []
 var occupants := {}                  ## seat -> character
@@ -68,3 +70,5 @@ func can_use(_by: Node) -> bool:
 func interact(by: Node) -> void:
 	var seat := free_seat(by.global_position) if not seats.is_empty() else null
 	used.emit(by, seat)
+	if tag != "" and Game.quests:
+		Game.quests.on_use(tag)

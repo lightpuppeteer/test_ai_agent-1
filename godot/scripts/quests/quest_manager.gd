@@ -1,8 +1,9 @@
 class_name QuestManager
 extends Node
-## Runs the quests from QuestData: starts them (from a villager or on their
-## own), checks each step, places pick-ups and the floating marker, and saves
-## progress to user://save.json.
+## Runs the quests from QuestData: starts them (from a villager, from him or on
+## their own), checks each step, runs conversations, places pick-ups and the
+## floating heart marker, and saves progress to user://save.json.
+## Finishing the last quest unlocks New Game+: every quest can be played again.
 
 signal quest_started(id: String)
 signal quest_advanced(id: String, step: int)
@@ -16,10 +17,13 @@ var states := {}
 var inventory := {}
 var quests := {}            # id -> quest dictionary
 var tracked := ""           # the quest shown in the tracker
+## Things that stay true across New Game+: ring, yoggi_home, decor, ng_plus…
+var flags := {}
 var _pickups := {}          # quest id -> Array[Pickup]
 var _step_started := {}     # quest id -> step index already "entered"
 var _wait_until := {}       # quest id -> time
-var _busy := false          # a dialogue triggered by a quest is open
+var _used := {}             # tags used since their step started
+var _busy := false          # a quest conversation is running
 var _marker: Node3D
 var _marker_label: Label3D
 
@@ -34,6 +38,7 @@ func _ready() -> void:
 		_load()
 	_build_marker()
 	Game.photo_taken.connect(_on_photo)
+	_apply_flags.call_deferred()
 	_autostart.call_deferred()
 
 
@@ -54,6 +59,8 @@ func active_ids() -> Array:
 
 
 func current_step(id: String) -> Dictionary:
+	if not states.has(id):
+		return {}
 	var q: Dictionary = quests[id]
 	var i: int = states[id]["step"]
 	return q["steps"][i] if i < q["steps"].size() else {}
@@ -61,8 +68,16 @@ func current_step(id: String) -> Dictionary:
 
 func step_progress(id: String) -> String:
 	var s := current_step(id)
-	if s.get("type", "") == "collect":
-		return "%d/%d" % [mini(inventory.get(s["item"], 0), s.get("count", 1)), s.get("count", 1)]
+	match s.get("type", ""):
+		"collect":
+			return "%d/%d" % [mini(inventory.get(s["item"], 0), s.get("count", 1)), s.get("count", 1)]
+		"decorate":
+			var d: DecorSystem = Game.world.decor if Game.world else null
+			if d:
+				var n := 0
+				for rid in DecorSystem.REQUIRED:
+					n += 1 if d.room_done(rid) else 0
+				return "%d/3 rooms" % n
 	return ""
 
 
@@ -79,12 +94,16 @@ func start(id: String) -> void:
 	changed.emit()
 
 
+## Interactables with a tag report here when used.
+func on_use(tag: String) -> void:
+	_used[tag] = true
+
+
 ## Called by villagers and the partner when you talk to them.
 ## Returns true when a quest took over the conversation.
 func handle_talk(who: String, color: Color = Color(0.98, 0.62, 0.45)) -> bool:
 	if _busy:
 		return true
-	# A quest step waiting for this person?
 	for id in active_ids():
 		var s := current_step(id)
 		match s.get("type", ""):
@@ -101,7 +120,6 @@ func handle_talk(who: String, color: Color = Color(0.98, 0.62, 0.45)) -> bool:
 						await _say(_speaker(who), s.get("lines", ["Thank you!"]), color)
 						_advance(id)
 						return true
-	# Someone with a quest to give?
 	for q in QuestData.QUESTS:
 		if q.get("giver", "") == who and status(q["id"]) == "" and _unlocked(q):
 			await _say(_speaker(who), q.get("intro", ["I have a favour to ask..."]), color)
@@ -138,16 +156,33 @@ func _enter_step(id: String, s: Dictionary) -> void:
 	match s.get("type", ""):
 		"collect":
 			_spawn_pickups(id, s)
+		"use":
+			_used.erase(s.get("tag", ""))
+		"catch":
+			var y: Yoggi = Places.spot("yoggi")
+			if y and not Game.player.has_accessory("yoggi"):
+				if y.state == "house":
+					# New Game+: he wanders back to her garden for the replay.
+					y.state = "home"
+					y.global_position = Places.spot("her_place").global_position + Vector3(2, 0.3, 1)
+				y.start_chase()
 		"time":
 			if Game.atmosphere and Game.atmosphere.current != s["preset"]:
 				if s.get("auto", false):
 					await get_tree().create_timer(1.5).timeout
 					Game.atmosphere.set_preset(s["preset"], 5.0)
 				elif Game.hud:
-					Game.hud.toast("Press T to change the time of day")
+					Game.hud.toast("Press %s to change the time of day" % ("▲" if Game.gamepad_active else "T"))
 		"memory":
 			_busy = true
 			await _say(s.get("title", ""), s.get("lines", []), Color(0.95, 0.55, 0.62))
+			_busy = false
+			_advance(id)
+		"dialogue":
+			_busy = true
+			# Let any pose changes settle first.
+			await get_tree().create_timer(0.6).timeout
+			await Dialogue.run(StoryData.TREES.get(s["tree"], {}))
 			_busy = false
 			_advance(id)
 		"wait":
@@ -159,18 +194,33 @@ func _check(id: String, s: Dictionary) -> bool:
 	var partner: Person = Game.partner
 	match s.get("type", ""):
 		"go":
-			return _near(p.global_position, _target(s.get("to", "")), s.get("radius", 3.0))
+			return Game.location == "outside" and _near(p.global_position, _target(s.get("to", "")), s.get("radius", 3.0))
+		"enter":
+			if Game.location != s.get("place", ""):
+				return false
+			return not s.has("carrying") or p.has_accessory(s["carrying"])
 		"sit_together", "lie_together":
 			var want := "sit" if s["type"] == "sit_together" else "lie"
 			if p.pose != want or partner == null or partner.pose != want:
 				return false
 			if s["type"] == "sit_together" and partner.anchor_owner != p.anchor_owner:
 				return false
-			if p.global_position.distance_to(partner.global_position) > 3.0:
+			if p.global_position.distance_to(partner.global_position) > 3.2:
 				return false
+			if s.has("tag"):
+				return p.anchor_owner != null and p.anchor_owner.tag == s["tag"]
 			return not s.has("at") or _near(p.global_position, _target(s["at"]), s.get("radius", 6.0))
+		"car_together":
+			return p.pose == "drive" and partner != null and partner.pose == "drive"
+		"use":
+			return _used.get(s.get("tag", ""), false)
 		"collect":
 			return inventory.get(s["item"], 0) >= s.get("count", 1)
+		"decorate":
+			var d: DecorSystem = Game.world.decor if Game.world else null
+			return d != null and d.complete() and not d.active
+		"catch":
+			return p.has_accessory("yoggi")
 		"time":
 			return Game.atmosphere != null and Game.atmosphere.current == s["preset"]
 		"drive":
@@ -183,8 +233,13 @@ func _check(id: String, s: Dictionary) -> bool:
 func _advance(id: String) -> void:
 	if status(id) != "active":
 		return
+	var s := current_step(id)
 	states[id]["step"] += 1
 	quest_advanced.emit(id, states[id]["step"])
+	if s.has("then"):
+		_busy = true
+		await Cutscene.run_actions(s["then"])
+		_busy = false
 	Sound.play_ui("step")
 	_save()
 	changed.emit()
@@ -200,18 +255,36 @@ func _complete(id: String) -> void:
 	_save()
 	quest_completed.emit(id)
 	changed.emit()
-	Sound.play_ui("quest_done")
 	var q: Dictionary = quests[id]
 	if Game.hud:
+		Sound.play_ui("quest_done")
 		Game.hud.toast("✿ Quest complete: " + q["title"])
 		if q.has("finish"):
 			_busy = true
-			await get_tree().create_timer(0.6).timeout
+			await get_tree().create_timer(0.8).timeout
 			await _say(q.get("finish_title", q["title"]), q["finish"], Color(0.95, 0.55, 0.62))
 			_busy = false
 	if tracked == id:
 		var act := active_ids()
 		tracked = act[0] if not act.is_empty() else ""
+	if q.get("new_game_plus", false):
+		new_game_plus()
+	else:
+		_autostart()
+
+
+## Every quest becomes available again; the ring, the house and Yoggi stay.
+func new_game_plus() -> void:
+	flags["ng_plus"] = int(flags.get("ng_plus", 0)) + 1
+	states.clear()
+	inventory.clear()
+	_step_started.clear()
+	tracked = ""
+	if Game.atmosphere:
+		Game.atmosphere.set_preset("day", 3.0)
+	_save()
+	changed.emit()
+	await get_tree().create_timer(2.0).timeout
 	_autostart()
 
 
@@ -239,6 +312,21 @@ func _on_photo() -> void:
 			_advance(id)
 
 
+## Restores persistent things (ring, decor, Yoggi at home) after loading.
+func _apply_flags() -> void:
+	var her: Person = Game.player
+	if her and flags.get("ring", false):
+		her.set_accessory("ring", true)
+	var d: DecorSystem = Game.world.decor if Game.world else null
+	if d and flags.has("decor"):
+		d.load_from(flags["decor"])
+	if flags.get("yoggi_home", false):
+		var y: Yoggi = Places.spot("yoggi")
+		var house: Interior = Places.interiors.get("house")
+		if y and house:
+			y.settle_home(house.to_global(Vector3(2.5, 0.1, 2.0)))
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -246,7 +334,11 @@ func _on_photo() -> void:
 func _say(speaker: String, lines: Array, color: Color) -> void:
 	if Game.hud:
 		_busy = true
-		await Game.hud.say(speaker, lines, color)
+		var styled: Array = []
+		for l in lines:
+			styled.append(Dialogue.style(str(l)))
+		var voice := 0.8 if speaker == _speaker("partner") else 1.0
+		await Game.hud.say(speaker, styled, color, voice)
 		_busy = false
 
 
@@ -263,7 +355,7 @@ func _near(a: Vector3, b: Variant, r: float) -> bool:
 	return d <= r
 
 
-## A landmark name, a villager name, "partner" or a Vector3 → world position.
+## A landmark, a Places spot, a villager, "partner" or a Vector3 → world position.
 func _target(t: Variant) -> Variant:
 	if t is Vector3:
 		return t
@@ -273,6 +365,9 @@ func _target(t: Variant) -> Variant:
 		if Game.terrain:
 			v.y = maxf(v.y, Game.terrain.height_at(v.x, v.z))
 		return v
+	var sp := Places.spot(s)
+	if sp:
+		return sp.global_position
 	var n := _person(s)
 	if n:
 		return n.global_position
@@ -285,8 +380,10 @@ func _person(who: String) -> Node3D:
 	return get_tree().current_scene.get_node_or_null("Villager_" + who) if get_tree().current_scene else null
 
 
+## Where the marker / mini-map point for a quest right now (null = nowhere useful).
 func step_target(id: String) -> Variant:
 	var s := current_step(id)
+	var inside := Game.location != "outside"
 	match s.get("type", ""):
 		"go", "drive":
 			return _target(s.get("to", ""))
@@ -294,8 +391,22 @@ func step_target(id: String) -> Variant:
 			return _target(s.get("who", ""))
 		"deliver":
 			return _target(s.get("to", "")) if inventory.get(s["item"], 0) >= s.get("count", _collect_count(id, s["item"])) else null
-		"sit_together", "lie_together", "photo":
+		"sit_together", "lie_together", "use":
+			if s.has("tag"):
+				var sp := Places.spot(s["tag"])
+				if sp:
+					return sp.global_position
 			return _target(s["at"]) if s.has("at") else null
+		"enter":
+			if inside:
+				return null
+			return _target({"pizza": "pizza_door", "cinema": "cinema_door", "house": "house_door", "hotel": "hotel_door"}.get(s.get("place", ""), ""))
+		"catch":
+			var y: Node3D = Places.spot("yoggi")
+			return y.global_position if y else null
+		"car_together":
+			var car: Node3D = get_tree().current_scene.get_node_or_null("Car") if get_tree().current_scene else null
+			return car.global_position if car else null
 		"collect":
 			var list: Array = _pickups.get(id, [])
 			var best: Variant = null
@@ -362,9 +473,18 @@ func _build_marker() -> void:
 	_marker.visible = false
 
 
+func current_target() -> Variant:
+	if tracked == "" or status(tracked) != "active":
+		var act := active_ids()
+		if act.is_empty():
+			return null
+		tracked = act[0]
+	return step_target(tracked)
+
+
 func _update_marker() -> void:
-	var t: Variant = step_target(tracked) if tracked != "" and status(tracked) == "active" else null
-	if t == null or (Game.hud and Game.hud.is_dialogue_open()):
+	var t: Variant = current_target()
+	if t == null or _busy or (Game.hud and Game.hud.is_dialogue_open()):
 		_marker.visible = false
 		return
 	_marker.visible = true
@@ -377,12 +497,16 @@ func _update_marker() -> void:
 # ---------------------------------------------------------------------------
 
 func _save() -> void:
-	if Game.options.has("shots"):
-		return   # screenshot runs must not touch the real save
+	if Game.options.has("shots") or Game.options.has("no_save"):
+		return
+	var d: DecorSystem = Game.world.decor if Game.world else null
+	if d:
+		flags["decor"] = d.placed
 	var data := {
 		"quests": states,
 		"inventory": inventory,
 		"tracked": tracked,
+		"flags": flags,
 		"outfits": {
 			"her": Game.player.outfit if Game.player else "",
 			"him": Game.partner.outfit if Game.partner else "",
@@ -402,10 +526,17 @@ func _load() -> void:
 	for id in data.get("quests", {}):
 		if quests.has(id):
 			var st: Dictionary = data["quests"][id]
-			states[id] = {"status": st.get("status", "active"), "step": int(st.get("step", 0))}
+			var step := int(st.get("step", 0))
+			# Resume at the start of a conversation rather than half-way through it.
+			# Carrying something isn't saved: go back to picking it up.
+			var steps: Array = quests[id]["steps"]
+			if step < steps.size() and steps[step].has("carrying") and step > 0:
+				step -= 1
+			states[id] = {"status": st.get("status", "active"), "step": step}
 	for k in data.get("inventory", {}):
 		inventory[k] = int(data["inventory"][k])
 	tracked = data.get("tracked", "")
+	flags = data.get("flags", {})
 	var outfits: Dictionary = data.get("outfits", {})
 	if Game.player and outfits.get("her", "") != "":
 		Game.player.set_outfit(outfits["her"])

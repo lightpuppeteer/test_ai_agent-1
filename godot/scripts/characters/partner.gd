@@ -7,8 +7,12 @@ extends Person
 @export var follow_distance := 2.2
 @export var lines: Array[String] = [
 	"I love days like this with you.",
-	"Race you to the beach?",
-	"Remember when we first came here?",
+	"Race you to the beach? Loser buys the pizza. (I will lose on purpose.)",
+	"Remember when I said I was 'good at directions'? Yeah. Me neither.",
+	"You look really nice today. Also every other day. It's a whole thing.",
+	"Should we go to the cinema later? I promise I won't cry. (I will cry.)",
+	"I've been practising pickup lines. Want to hear one? ...No? Fair.",
+	"Yoggi looked at me today. I think we're bonding. Or he's planning something.",
 ]
 
 var interactable: Interactable
@@ -26,7 +30,7 @@ func _ready() -> void:
 	super._ready()
 	footstep_db = -19.0
 	Game.partner = self
-	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES
+	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES | Game.PHYS_WALLS
 	interactable = Interactable.new()
 	interactable.kind = "talk"
 	interactable.prompt = "Talk"
@@ -53,7 +57,7 @@ func _on_talk(by: Node, _seat: Node3D) -> void:
 	gesture("emote-yes")
 	if Game.quests and await Game.quests.handle_talk("partner", Color(0.45, 0.66, 0.95)):
 		return
-	await Game.hud.say(display_name, [lines[_line % lines.size()]], Color(0.45, 0.66, 0.95), 0.8)
+	await Game.hud.say(display_name, [Dialogue.style(lines[_line % lines.size()])], Color(0.45, 0.66, 0.95), 0.8)
 	_line += 1
 
 
@@ -67,6 +71,8 @@ func _think(delta: float) -> void:
 	want_run = false
 	var p: Person = Game.player
 	if p == null or pose != "move":
+		return
+	if Game.story_lock and _goal == null:
 		return
 	if _goal != null:
 		var tg: Vector3 = _goal - global_position

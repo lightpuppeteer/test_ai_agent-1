@@ -18,6 +18,11 @@ var arm: SpringArm3D
 var _dist := 9.0
 var _dragging := false
 var _last_input_time := -100.0
+var _cine := false
+var _cine_point := Vector3.ZERO
+var _saved := []
+var _shake := 0.0
+var _shake_time := 0.0
 
 
 func _ready() -> void:
@@ -58,7 +63,36 @@ func snap() -> void:
 	reset_physics_interpolation()
 
 
+## Story camera: look at a point from a given yaw/pitch/distance until end_cinematic().
+func cinematic(point: Vector3, yaw_rad: float, pitch_deg: float, dist: float) -> void:
+	if not _cine:
+		_saved = [yaw, pitch, distance]
+	_cine = true
+	_cine_point = point
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(self, "yaw", yaw + wrapf(yaw_rad - yaw, -PI, PI), 1.2).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(self, "pitch", deg_to_rad(pitch_deg), 1.2).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(self, "distance", dist, 1.2).set_trans(Tween.TRANS_SINE)
+
+
+func end_cinematic() -> void:
+	if not _cine:
+		return
+	_cine = false
+	if _saved.size() == 3:
+		var tw := create_tween().set_parallel(true)
+		tw.tween_property(self, "pitch", _saved[1], 1.0)
+		tw.tween_property(self, "distance", _saved[2], 1.0)
+
+
+func shake(strength: float, seconds: float) -> void:
+	_shake = strength
+	_shake_time = seconds
+
+
 func _target_point() -> Vector3:
+	if _cine:
+		return _cine_point
 	var xf: Transform3D = target.get_global_transform_interpolated() if target.is_inside_tree() else target.global_transform
 	return xf.origin + Vector3(0, follow_height + (0.4 if vehicle_mode else 0.0), 0)
 
@@ -108,6 +142,14 @@ func _process(delta: float) -> void:
 	_dist = lerpf(_dist, distance, clampf(delta * 8.0, 0.0, 1.0))
 	rotation = Vector3(pitch, yaw, 0)
 	arm.spring_length = _dist
+	if _shake_time > 0.0:
+		_shake_time -= delta
+		var k := _shake * clampf(_shake_time, 0.0, 1.0)
+		camera.h_offset = randf_range(-k, k) * 0.3
+		camera.v_offset = randf_range(-k, k) * 0.3
+	elif camera.h_offset != 0.0 or camera.v_offset != 0.0:
+		camera.h_offset = 0.0
+		camera.v_offset = 0.0
 	if target is CollisionObject3D:
 		arm.clear_excluded_objects()
 		arm.add_excluded_object((target as CollisionObject3D).get_rid())

@@ -456,6 +456,62 @@ def make_sfx(out):
     save_wav(os.path.join(out, "car_engine.wav"), eng / np.max(np.abs(eng)) * 0.6)
 
 
+def make_story_sfx(out):
+    """Sounds for the story moments."""
+    t = t_axis(0.35)
+    # Door: a wooden knock-thump plus a little latch click.
+    door = mix(np.sin(2 * np.pi * 110 * t) * np.exp(-t * 18) * 0.8, bandnoise(0.35, 300, 2000, 25) * 0.5,
+               np.concatenate([np.zeros(int(0.12 * SR)), bandnoise(0.05, 2000, 6000, 120) * 0.4]))
+    save_wav(os.path.join(out, "door.wav"), door * 0.8)
+    # Chest: creaky lid + sparkly arpeggio.
+    tc = t_axis(0.5)
+    creak = np.sin(2 * np.pi * np.cumsum(180 + 120 * np.sin(2 * np.pi * 3 * tc)) / SR) * np.exp(-tc * 4) * 0.3
+    sparkle = tone_seq(["E6", "G#6", "B6", "E7"], inst=kalimba, step=0.06, dur=0.6, gain=0.5)
+    save_wav(os.path.join(out, "chest.wav"), mix(creak, np.concatenate([np.zeros(int(0.25 * SR)), sparkle])))
+    # Smooch: a soft "mwah".
+    ts = t_axis(0.25)
+    sm = vowel([(500, 120, 1.0), (900, 150, 0.4)], 0.18, 240) * 0.6
+    pop = bandnoise(0.03, 1500, 6000, 200) * 0.6
+    save_wav(os.path.join(out, "smooch.wav"), mix(pop, np.concatenate([np.zeros(int(0.02 * SR)), sm])))
+    # LEVEL UP: an 8-bit-ish arcade jingle.
+    lv = np.zeros(0)
+    for n in ["C5", "E5", "G5", "C6", "G5", "C6", "E6", "G6", "C7"]:
+        tt = t_axis(0.07)
+        sq = np.sign(np.sin(2 * np.pi * hz(midi(n)) * tt)) * 0.3 * np.exp(-tt * 6)
+        lv = np.concatenate([lv, sq])
+    tt = t_axis(0.5)
+    lv = np.concatenate([lv, np.sign(np.sin(2 * np.pi * hz(midi("C7")) * tt)) * 0.3 * np.exp(-tt * 4)])
+    save_wav(os.path.join(out, "levelup.wav"), lv)
+    # Fireworks.
+    tl = t_axis(1.0)
+    launch = bandnoise(1.0, 1500, 7000, 3, attack=0.05) * 0.4 * np.linspace(1, 0.2, len(tl))
+    whistle = np.sin(2 * np.pi * np.cumsum(1200 + 900 * tl) / SR) * 0.08 * np.exp(-tl * 1.5)
+    save_wav(os.path.join(out, "firework_launch.wav"), launch + whistle)
+    boom = mix(np.sin(2 * np.pi * np.cumsum(70 + 60 * np.exp(-t_axis(1.5) * 8)) / SR) * np.exp(-t_axis(1.5) * 4),
+               bandnoise(1.5, 200, 4000, 3, attack=0.002) * 0.6,
+               bandnoise(1.5, 3000, 9000, 2.5, attack=0.2) * 0.25)
+    save_wav(os.path.join(out, "firework_boom.wav"), boom * 0.9)
+    # Volcano eruption: deep rumble + blast + crackle.
+    te = t_axis(5.0)
+    rumble = bandnoise(5.0, 25, 160, 0.5, attack=0.3) * 1.2
+    blast = bandnoise(5.0, 60, 1500, 1.5, attack=0.01)
+    crackle = np.zeros(len(te))
+    for k in range(120):
+        i = RNG.integers(0, len(te) - 2000)
+        crackle[i:i + 400] += RNG.normal(0, 1, 400) * np.exp(-np.arange(400) / 60) * RNG.uniform(0.1, 0.4)
+    save_ogg(os.path.join(out, "eruption.ogg"), np.stack([rumble + blast + crackle * 0.5] * 2, 1) * 0.6)
+    # Meow.
+    tm = t_axis(0.45)
+    f0 = 520 + 260 * np.sin(np.pi * tm / 0.45)
+    meow = signal.sawtooth(2 * np.pi * np.cumsum(f0) / SR, 0.5)
+    b, a = signal.butter(2, [700 / (SR / 2), 2600 / (SR / 2)], "band")
+    meow = signal.lfilter(b, a, meow) * np.sin(np.pi * tm / 0.45) ** 1.5
+    save_wav(os.path.join(out, "meow.wav"), meow * 0.8)
+    # Pop.
+    tp = t_axis(0.12)
+    save_wav(os.path.join(out, "pop.wav"), np.sin(2 * np.pi * np.cumsum(900 - 600 * tp / 0.12) / SR) * np.exp(-tp * 30) * 0.6)
+
+
 if __name__ == "__main__":
     out = sys.argv[1]
     os.makedirs(out, exist_ok=True)
@@ -464,3 +520,5 @@ if __name__ == "__main__":
         make_sfx(out)
     if which in ("all", "music"):
         make_music(out)
+    if which in ("all", "story"):
+        make_story_sfx(out)

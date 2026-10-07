@@ -22,6 +22,10 @@ var occupied: Array[Vector3] = []
 var benches: Array[Interactable] = []
 var towels: Array[Interactable] = []
 var bulb_material: StandardMaterial3D
+var decor: DecorSystem
+var cinema_screen: CinemaScreen
+var volcano: Volcano
+var places: Places
 
 
 func _ready() -> void:
@@ -39,6 +43,10 @@ func _ready() -> void:
 	_beach()
 	_dock()
 	_hill()
+	places = Places.new()
+	places.name = "Places"
+	add_child(places)
+	places.build(self)
 	_trees()
 	_scatter()
 	print("[island] dressed in %d ms (%d nodes)" % [Time.get_ticks_msec() - t0, get_child_count()])
@@ -281,10 +289,7 @@ func _town() -> void:
 		put("furniture-kit/tableRound", tx, tz, 0.0, 1.0, "cylinder", {"dy": 0.0}, 1.5)
 	# Town hall (north) and houses.
 	house(0.0, -26.0, 0.0, "t", Color(0.93, 0.42, 0.38), 1.5)
-	house(-28.0, -23.0, 0.0, "a", ROOF_COLORS[1], 1.25)
-	house(-28.0, 1.0, 180.0, "c", ROOF_COLORS[2], 1.25)
-	house(28.0, -23.0, 0.0, "e", ROOF_COLORS[3], 1.25)
-	house(28.0, 1.0, 180.0, "h", ROOF_COLORS[4], 1.25)
+	# The other four houses (pizza place, cinema, our house, her place) are built by Places.
 	# Little front gardens.
 	for hx in [-28.0, 28.0]:
 		for hz in [-16.5, -4.5]:
@@ -399,11 +404,34 @@ func _dock() -> void:
 	var bb := Props.model_aabb(piece)
 	var s := Props.kit_scale(piece)
 	var step := bb.size.z * s * 0.98
+	const DECK_TOP := 0.93   # plank surface of the Kenney dock piece (posts reach 1.31)
+	var z0 := z
 	while z < 50.0:
-		# Deck top lands at deck_y; legs reach down into the sand/sea.
-		var n := Props.place(self, piece, Vector3(dx, deck_y - bb.end.y * s, z), 0.0, 1.0, "box")
+		# Plank surface lands at deck_y; legs reach down into the sand/sea.
+		var n := Props.place(self, piece, Vector3(dx, deck_y - DECK_TOP * s, z), 0.0, 1.0, "")
 		n.name = "Dock"
 		z += step
+	# One smooth walkable slab for the whole pier (no snagging on posts).
+	var body := StaticBody3D.new()
+	body.name = "PierDeck"
+	body.collision_layer = Game.PHYS_PROPS
+	add_child(body)
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	var length := z - z0
+	box.size = Vector3(bb.size.x * s * 0.92, 0.4, length)
+	cs.shape = box
+	cs.position = Vector3(dx, deck_y - 0.2, z0 - step * 0.5 + length * 0.5)
+	body.add_child(cs)
+	# A gentle ramp from the sand up onto the deck.
+	var ramp := CollisionShape3D.new()
+	var rb := BoxShape3D.new()
+	rb.size = Vector3(bb.size.x * s * 0.92, 0.2, 4.0)
+	ramp.shape = rb
+	var sand_y := ground(dx, z0 - step * 0.5 - 1.8)
+	ramp.position = Vector3(dx, (deck_y + sand_y) * 0.5 - 0.1, z0 - step * 0.5 - 1.6)
+	ramp.rotation.x = atan2(deck_y - sand_y, 3.6)
+	body.add_child(ramp)
 	occupied.append(Vector3(dx, 30.0, 2.5))
 	var end := Vector3(dx, deck_y, z - step)
 	var it := bench(dx, end.z + 0.4, 0.0)

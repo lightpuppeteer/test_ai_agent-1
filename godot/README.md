@@ -12,7 +12,14 @@ the repo root for reference). Open this folder in **Godot 4.7** and press **F5**
 | **Drag** orbit the camera, **Wheel** zoom (trackpad pinch and scroll work too) | |
 | **O** her outfit, **Shift+O** his outfit, **T** time of day | **Q** quest log, **M** music on/off, **H** controls, **F12** photo, **F3** fps |
 
-Gamepads work too: left stick moves, right stick orbits, A jumps, X interacts, RB runs.
+**N** cycles the mini-map zoom. While decorating the house: **Z/X** pick a piece, **R** rotate, **E** place,
+**F** pick a piece back up, **Esc** finish. **Esc** also stands up or leaves the car.
+
+**PlayStation (DualSense) controller**: left stick moves, right stick orbits, **✕** interact, **○** stand up / back,
+**□** jump (handbrake in the car), **△** quest log, **R1** run, **R2/L2** throttle/brake, **L1** her outfit,
+**D-pad** ← his outfit, ↑ time of day, ↓ music, → map zoom (↑/↓ also pick dialogue answers), **Options** controls,
+**Create** photo. On-screen button hints switch to PlayStation glyphs as soon as the controller is touched, and it
+rumbles on bumps and big moments.
 
 ## What's on the island
 
@@ -27,6 +34,20 @@ Gamepads work too: left stick moves, right stick orbits, A jumps, X interacts, R
 - **Partner**: walks beside you, sits next to you, lies on the towel beside yours and rides along in the car.
 - **Villagers**: six animal neighbours (cat, dog, bunny, fox, penguin, koala) wander around and chat when you press E.
 - **Memory spots**: sparkles on the ground. Press E to read a memory; each chapter places its own.
+- **Places with interiors** (doors fade you inside a cut-away "dollhouse" room): Pizzeria Amore, the cinema
+  (horror, comedy and drama on rotation, popcorn and drinks), our house (decorate it with the furniture inventory),
+  the Hotel & Spa (pool deck outside, an enormous bed inside). Her place is the pink-roofed house where Yoggi lives.
+- **The picnic garden** east of town, the **road across the sea** to the oasis island, and the **volcano** behind it.
+- **Mini-map** (bottom left) with a heart for the current goal.
+
+## The story
+
+Eight quests in order, each with the dialogue trees from `scripts/story/story_data.gd` (pick her answers with
+the mouse, ↑/↓ + E, or the D-pad + ✕): the first pizza date, flirting on the beach and the first kiss in the car
+("boyfriend unlocked"), the picnic, the cinema, moving in (decorate, then catch Yoggi and bring him home), the spa
+day, the road to the oasis and the ring under the erupting volcano, and the anniversary ending with fireworks and
+"Happy 1st Year Anniversary, to more together!". After the ending a **New Game+** starts: every quest can be
+played again, keeping the ring, the decorated house and Yoggi.
 
 ## Writing quests
 

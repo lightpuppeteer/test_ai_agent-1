@@ -54,7 +54,23 @@ func compute_height(x: float, z: float) -> float:
 	else:
 		beach = -minf(sd * 0.22 + sd * sd * 0.004, 7.0)
 	var bank := smoothstep(-(bw + 2.6), -bw, sd)
-	return lerpf(land, beach, bank)
+	var h := lerpf(land, beach, bank)
+	# The little oasis island out at sea (south-east).
+	var od := Vector2(x, z).distance_to(Places.OASIS) - Places.OASIS_R + 1.2 * sin(atan2(z - Places.OASIS.y, x - Places.OASIS.x) * 3.0)
+	if od < 14.0:
+		var oh: float
+		if od < -5.0:
+			oh = 1.6 + _noise.get_noise_2d(x * 2.0, z * 2.0) * 0.15
+			# Pond dip in the middle.
+			var pd := Vector2(x, z).distance_to(Places.OASIS + Vector2(3.0, 2.0))
+			oh -= 1.1 * smoothstep(3.6, 2.0, pd)
+		elif od < 0.0:
+			var u := (od + 5.0) / 5.0
+			oh = lerpf(1.6, 0.0, smoothstep(0.0, 1.0, u))
+		else:
+			oh = -minf(od * 0.35, 7.0)
+		h = maxf(h, oh)
+	return h
 
 
 func _build_heights() -> void:

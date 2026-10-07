@@ -21,6 +21,7 @@ var _scale := 1.25
 var _half_width := 0.9
 var lights: Array[Light3D] = []
 var _engine: AudioStreamPlayer3D
+var _last_vy := 0.0
 
 
 func _ready() -> void:
@@ -192,7 +193,8 @@ func _physics_process(delta: float) -> void:
 	var throttle := 0.0
 	var steer_in := 0.0
 	if not (Game.hud and Game.hud.is_dialogue_open()):
-		throttle = Input.get_action_strength("move_forward") - Input.get_action_strength("move_back")
+		throttle = maxf(Input.get_action_strength("move_forward"), Input.get_action_strength("throttle")) \
+				- maxf(Input.get_action_strength("move_back"), Input.get_action_strength("brake"))
 		steer_in = Input.get_action_strength("move_left") - Input.get_action_strength("move_right")
 	var spd := speed_kmh()
 	var handbrake := Input.is_action_pressed("handbrake")
@@ -217,4 +219,9 @@ func _physics_process(delta: float) -> void:
 	# Steering eases off at speed.
 	var max_s := max_steer * lerpf(1.0, 0.35, clampf(absf(spd) / max_speed_kmh, 0.0, 1.0))
 	_steer = move_toward(_steer, steer_in * max_s, delta * 2.2)
+	# A little rumble on bumps.
+	var jolt := absf(linear_velocity.y - _last_vy)
+	_last_vy = linear_velocity.y
+	if jolt > 1.2:
+		Game.rumble(clampf(jolt * 0.15, 0.0, 0.6), clampf(jolt * 0.1, 0.0, 0.4), 0.12)
 	steering = _steer

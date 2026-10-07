@@ -47,11 +47,15 @@ var _shape: CollisionShape3D
 var footstep_db := -14.0
 var footsteps := true
 var _stride := 0.0
+var _held_anim := ""
+var _accessories := {}
+var _accessory_nodes := {}
+var _lean_tween: Tween
 
 
 func _ready() -> void:
 	collision_layer = Game.PHYS_CHARACTERS
-	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES
+	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES | Game.PHYS_WALLS
 	floor_snap_length = 0.45
 	floor_max_angle = deg_to_rad(52.0)
 	floor_constant_speed = true
@@ -117,6 +121,9 @@ func set_look(id: String) -> void:
 	for mi in Props._mesh_instances(model):
 		(mi as VisualInstance3D).layers = 2     # keeps the blob shadow decal off the body
 	anim = model.find_child("AnimationPlayer", true, false)
+	_accessory_nodes.clear()
+	for acc in _accessories.keys():
+		_attach_accessory(acc)
 	for n in ["idle", "walk", "sprint", "sit", "drive", "static", "fall", "crouch", "holding-both"]:
 		if anim.has_animation(n):
 			anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
@@ -211,6 +218,9 @@ func _physics_process(delta: float) -> void:
 
 
 func _animate_locomotion(spd: float) -> void:
+	if _held_anim != "":
+		_play(_held_anim, 0.25)
+		return
 	if _anim_name.begins_with("emote") or _anim_name.begins_with("interact") or _anim_name == "pick-up":
 		if anim.is_playing():
 			return
@@ -229,8 +239,14 @@ func _keep_on_land() -> void:
 	var t: Terrain = Game.terrain
 	if t == null:
 		return
-	if t.height_at(global_position.x, global_position.z) < -0.45:
-		global_position = Vector3(_last_safe.x, global_position.y, _last_safe.z)
+	var ground_h: float = t.height_at(global_position.x, global_position.z)
+	# Standing on something above the terrain (the pier, a bridge)? Then it's not swimming.
+	if is_on_floor() and global_position.y - ground_h > 0.6:
+		_last_safe = global_position
+		return
+	if ground_h < -0.45:
+		# Fell off the pier or walked out too deep: back to the last safe spot.
+		global_position = _last_safe if global_position.y < _last_safe.y - 0.3 else Vector3(_last_safe.x, global_position.y, _last_safe.z)
 		velocity.x = 0.0
 		velocity.z = 0.0
 	elif is_on_floor():
@@ -272,6 +288,8 @@ func enter_anchor(seat: Node3D, new_pose: String, owner_it: Interactable = null,
 	_tween.tween_method(func(y: float) -> void: rotation.y = y; facing = y, rotation.y, rotation.y + wrapf(yaw - rotation.y, -PI, PI), duration)
 	await _tween.finished
 	pose = new_pose
+	if _rides_vehicle():
+		physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	if footsteps and new_pose != "drive":
 		Sound.play("sit", footstep_db + 2.0, randf_range(0.9, 1.1))
 	pose_changed.emit(pose)
@@ -297,10 +315,24 @@ func _set_pose_visual(p: String) -> void:
 func _follow_anchor() -> void:
 	if anchor == null or not is_instance_valid(anchor):
 		return
+	if _rides_vehicle():
+		return   # handled every frame in _process
 	var xf := anchor.global_transform
 	global_position = xf.origin
 	rotation.y = xf.basis.get_euler().y
 	facing = rotation.y
+
+
+func _rides_vehicle() -> bool:
+	return anchor != null and is_instance_valid(anchor) and anchor.get_parent() is RigidBody3D
+
+
+func _process(_delta: float) -> void:
+	# In a car: glue to the seat with its full tilt, using the car's interpolated transform
+	# so we never lag behind or poke out of the body when it bounces.
+	if pose == "drive" and _rides_vehicle():
+		global_transform = anchor.get_global_transform_interpolated()
+		facing = rotation.y
 
 
 ## Leaves the current anchor, stepping to `exit_pos` (or in front of the seat).
@@ -325,6 +357,10 @@ func leave_anchor(exit_pos: Variant = null, duration: float = 0.3) -> void:
 	pose = "transition"
 	if anchor_owner:
 		anchor_owner.release(self)
+	if physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF:
+		physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_INHERIT
+		rotation = Vector3(0, rotation.y, 0)
+		reset_physics_interpolation()
 	_set_pose_visual("move")
 	if _tween:
 		_tween.kill()
@@ -341,3 +377,146 @@ func leave_anchor(exit_pos: Variant = null, duration: float = 0.3) -> void:
 
 func is_free() -> bool:
 	return pose == "move"
+
+
+# ---------------------------------------------------------------------------
+# Story helpers: held poses, leaning in, accessories
+# ---------------------------------------------------------------------------
+
+## Holds an animation (e.g. "crouch" for kneeling) until release_pose().
+func hold_pose(anim_name: String) -> void:
+	_held_anim = anim_name
+	_play(anim_name, 0.3)
+
+
+func release_pose() -> void:
+	_held_anim = ""
+
+
+## Leans the body forward (amount 0..1), e.g. for a kiss. In a car, leans sideways
+## towards the other seat instead.
+func lean(amount: float) -> void:
+	if _lean_tween:
+		_lean_tween.kill()
+	_lean_tween = create_tween()
+	var target := Vector3.ZERO
+	if pose == "drive" and anchor:
+		var other: Node3D = Game.partner if self == Game.player else Game.player
+		var local := global_transform.affine_inverse() * other.global_position
+		# Visual is rotated 180°: +X of the body is -X of the pivot.
+		target = Vector3(0.08 * amount, 0, (0.3 if local.x > 0.0 else -0.3) * amount)
+	elif pose != "lie":
+		target = Vector3(0.28 * amount, 0, 0)
+	if pose == "lie":
+		return
+	_lean_tween.tween_property(pose_pivot, "rotation", target, 0.5).set_trans(Tween.TRANS_SINE)
+
+
+func set_accessory(acc: String, on: bool) -> void:
+	if on:
+		_accessories[acc] = true
+		_attach_accessory(acc)
+	else:
+		_accessories.erase(acc)
+		if _accessory_nodes.has(acc) and is_instance_valid(_accessory_nodes[acc]):
+			_accessory_nodes[acc].queue_free()
+		_accessory_nodes.erase(acc)
+
+
+func has_accessory(acc: String) -> bool:
+	return _accessories.has(acc)
+
+
+func _attach_accessory(acc: String) -> void:
+	if _accessory_nodes.has(acc) and is_instance_valid(_accessory_nodes[acc]):
+		return
+	var sk: Skeleton3D = model.find_child("Skeleton3D", true, false) if model else null
+	if sk == null:
+		return
+	var bone := "head"
+	var root := Node3D.new()
+	match acc:
+		"cucumbers":
+			bone = "head"
+			for sx in [-1.0, 1.0]:
+				var mi := _disc(0.05, 0.014, Color(0.55, 0.85, 0.4), Color(0.85, 0.95, 0.7))
+				mi.position = Vector3(sx * 0.075, 0.52 - 0.343, Avatar.HEAD_FRONT + 0.035)
+				mi.rotation.x = PI * 0.5
+				root.add_child(mi)
+		"ring":
+			bone = "arm-left"
+			var t := MeshInstance3D.new()
+			var tm := TorusMesh.new()
+			tm.inner_radius = 0.045
+			tm.outer_radius = 0.058
+			t.mesh = tm
+			var m := StandardMaterial3D.new()
+			m.albedo_color = Color(1.0, 0.82, 0.35)
+			m.metallic = 0.9
+			m.roughness = 0.2
+			m.emission_enabled = true
+			m.emission = Color(1.0, 0.75, 0.3)
+			m.emission_energy_multiplier = 0.4
+			t.material_override = m
+			t.rotation.z = PI * 0.5
+			t.position = Vector3(0.25, -0.006, 0.0)
+			root.add_child(t)
+			var gem := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 0.018
+			sm.height = 0.036
+			gem.mesh = sm
+			var gm := StandardMaterial3D.new()
+			gm.albedo_color = Color(0.9, 0.95, 1.0)
+			gm.emission_enabled = true
+			gm.emission = Color(0.8, 0.9, 1.0)
+			gm.emission_energy_multiplier = 1.5
+			gem.material_override = gm
+			gem.position = Vector3(0.25, 0.055, 0.0)
+			root.add_child(gem)
+		"pepperoni":
+			bone = "leg-left"
+			var d := _disc(0.035, 0.008, Color(0.75, 0.15, 0.12), Color(0.85, 0.25, 0.2))
+			d.position = Vector3(0, -0.08, 0.075)
+			d.rotation.x = PI * 0.5
+			root.add_child(d)
+		"popcorn":
+			bone = "leg-right"
+			root.add_child(Props3D.popcorn())
+			root.get_child(0).position = Vector3(0.04, -0.07, 0.14)
+			root.get_child(0).rotation.x = -PI * 0.5
+		"drink":
+			bone = "leg-left"
+			root.add_child(Props3D.drink())
+			root.get_child(0).position = Vector3(-0.03, -0.07, 0.13)
+			root.get_child(0).rotation.x = -PI * 0.5
+		"yoggi":
+			bone = "torso"
+			var cat := Props.model("cube-pets/animal-cat")
+			cat.scale = Vector3.ONE * 0.16
+			cat.position = Vector3(0, -0.02, 0.17)
+			var ap: AnimationPlayer = cat.find_child("AnimationPlayer", true, false)
+			if ap and ap.has_animation("idle"):
+				ap.get_animation("idle").loop_mode = Animation.LOOP_LINEAR
+				ap.play("idle")
+			root.add_child(cat)
+	var ba := BoneAttachment3D.new()
+	ba.bone_name = bone
+	sk.add_child(ba)
+	ba.add_child(root)
+	_accessory_nodes[acc] = ba
+
+
+func _disc(r: float, h: float, side: Color, top: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = h
+	cm.radial_segments = 16
+	mi.mesh = cm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = top
+	m.roughness = 0.6
+	mi.material_override = m
+	return mi

@@ -24,7 +24,7 @@ func _physics_process(delta: float) -> void:
 func _read_input() -> void:
 	intent = Vector3.ZERO
 	want_run = false
-	if not input_enabled or (Game.hud and Game.hud.is_dialogue_open()):
+	if not input_enabled or Game.story_lock or (Game.hud and Game.hud.is_dialogue_open()):
 		return
 	var mv: Vector2 = Game.move_input()
 	if pose == "move":
@@ -46,7 +46,7 @@ func _read_input() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not input_enabled:
+	if not input_enabled or Game.story_lock or Game.decor_active:
 		return
 	if Game.hud and Game.hud.is_dialogue_open():
 		return
@@ -63,9 +63,17 @@ func _unhandled_input(event: InputEvent) -> void:
 					exit_car()
 				elif Game.hud:
 					Game.hud.toast("Slow down to get out")
-	elif event.is_action_pressed("cycle_look"):
-		# O: her outfit · Shift+O: his outfit.
-		var who: Person = Game.partner if Input.is_key_pressed(KEY_SHIFT) and Game.partner else self
+	elif event.is_action_pressed("cancel") and pose in ["sit", "lie", "drive"]:
+		get_viewport().set_input_as_handled()
+		if pose == "drive":
+			if car and car.can_exit():
+				exit_car()
+		else:
+			stand_up()
+	elif event.is_action_pressed("cycle_look") or event.is_action_pressed("cycle_look_him"):
+		# O / L1: her outfit · Shift+O / D-pad left: his outfit.
+		var his := event.is_action_pressed("cycle_look_him") or Input.is_key_pressed(KEY_SHIFT)
+		var who: Person = Game.partner if his and Game.partner else self
 		var nm := who.next_look()
 		if Game.hud:
 			Game.hud.toast("👗 " + nm if who == self else "👕 " + nm)
@@ -114,7 +122,7 @@ func exit_car() -> void:
 
 func _update_focus() -> void:
 	var best: Interactable = null
-	if pose == "move" and input_enabled:
+	if pose == "move" and input_enabled and not Game.decor_active and not Game.story_lock:
 		var best_score := INF
 		var fwd := -global_transform.basis.z
 		for n in get_tree().get_nodes_in_group("interactable"):

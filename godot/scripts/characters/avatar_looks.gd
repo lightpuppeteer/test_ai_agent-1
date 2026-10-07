@@ -44,7 +44,8 @@ static func look(who: String, outfit: String) -> Dictionary:
 	else:
 		parts.append_array(_head(SKIN_HER))
 		parts.append_array(_hair_her())
-		parts.append_array(_sunglasses_on_head())
+		# Sunglasses on her face with the black outfit, pushed up on her head otherwise.
+		parts.append_array(_sunglasses_on_eyes() if outfit == "gallery" else _sunglasses_on_head())
 		face = {"eyes": "round", "brows": Color(0.45, 0.33, 0.25), "mouth": "grin", "blush": true, "lash": true}
 		parts.append_array(_outfit_her(outfit))
 	return {"parts": parts, "face": face}
@@ -174,8 +175,6 @@ static func _hair_her() -> Array:
 	p.append_array(_pair("head", "head", Vector3(0.045, 0.42, 0.30), Vector3(0.218, 0.5, -0.05), h, {"color2": HAIR_HER_TIPS, "shade": 0.0, "bevel": 0.015}))
 	# Platinum "money piece" strands framing the face (middle part).
 	p.append_array(_pair("head", "head", Vector3(0.05, 0.43, 0.05), Vector3(0.19, 0.49, f + 0.004), BLONDE, {"color2": BLONDE.darkened(0.06), "shade": 0.0, "bevel": 0.012}))
-	# The blonde pieces start at the parting and sweep back over the top.
-	p.append_array(_pair("head", "head", Vector3(0.14, 0.04, 0.2), Vector3(0.085, 0.725, 0.07), BLONDE, {"rot": Vector3(0, 0, -10), "shade": 0.0, "bevel": 0.012}))
 	return p
 
 
@@ -248,7 +247,7 @@ static func _outfit_her(outfit: String) -> Array:
 	p.append_array(_legs(skin))
 	match outfit:
 		"silver_dress":
-			var silver := Color(0.86, 0.87, 0.9)
+			var silver := Color(0.8, 0.79, 0.8)
 			p.append(_torso(skin, 0.0, {"shade": 0.03}))
 			p.append(_b("torso", Vector3(A.TORSO_SIZE.x + 0.014, 0.13, A.TORSO_SIZE.z + 0.014), Vector3(0, 0.24, A.TORSO_CENTER.z), silver, {"mat": "shiny", "shade": 0.05}))
 			p.append_array(_pair("torso", "torso", Vector3(0.018, 0.08, A.TORSO_SIZE.z + 0.016), Vector3(0.07, 0.335, A.TORSO_CENTER.z), silver, {"mat": "shiny", "shade": 0.0}))

@@ -25,8 +25,9 @@ var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	add_to_group("villagers")
 	collision_layer = Game.PHYS_CHARACTERS
-	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES
+	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES | Game.PHYS_WALLS
 	floor_snap_length = 0.4
 	_rng.seed = hash(display_name)
 	home = global_position
@@ -133,5 +134,5 @@ func _on_talk(_by: Node, _seat: Node3D) -> void:
 		return
 	var line: String = lines[_talk_index % lines.size()]
 	_talk_index += 1
-	await Game.hud.say(display_name, [line], color, voice)
+	await Game.hud.say(display_name, [Dialogue.style(line)], color, voice)
 	_enter("idle")
