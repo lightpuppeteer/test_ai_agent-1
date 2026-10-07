@@ -37,6 +37,11 @@ var _title_font: FontVariation
 var _body_font: FontVariation
 var _bold_font: FontVariation
 var _fps: Label
+var _voice := 1.0
+var _last_chars := 0
+var tracker: VBoxContainer
+var quest_log: PanelContainer
+var _log_list: VBoxContainer
 
 
 func _ready() -> void:
@@ -61,6 +66,7 @@ func _ready() -> void:
 	_build_title()
 	_build_help()
 	_build_speed()
+	_build_tracker()
 	_fps = _label("", 16, INK)
 	_fps.anchor_left = 1.0
 	_fps.anchor_right = 1.0
@@ -75,7 +81,10 @@ func _ready() -> void:
 
 
 func _hook_player(p: Node) -> void:
-	p.focus_changed.connect(func(it: Interactable) -> void: _focus = it)
+	p.focus_changed.connect(func(it: Interactable) -> void:
+		if it and it != _focus:
+			Sound.play("ui_blip", -20.0)
+		_focus = it)
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +240,9 @@ func _build_help() -> void:
 		"Drag  orbit camera · Wheel  zoom",
 		"In the car: W/S  drive · A/D  steer",
 		"Space  handbrake · E  get out",
-		"O  outfit · T  time of day · F12  photo",
+		"O  her outfit · Shift+O  his outfit",
+		"T  time of day · Q  quests · F12  photo",
+		"M  music on/off",
 		"H  hide this",
 	]:
 		vb.add_child(_label(line, 17))
@@ -283,7 +294,8 @@ func show_title(title: String, subtitle: String = "", hold: float = 3.0) -> void
 
 
 ## Shows lines one by one (E / click / Space to continue). Returns when closed.
-func say(speaker: String, lines: Array, color: Color = ACCENT) -> void:
+func say(speaker: String, lines: Array, color: Color = ACCENT, voice: float = 1.0) -> void:
+	_voice = voice
 	_dlg_lines = lines
 	_dlg_index = 0
 	dlg_name.text = speaker
@@ -303,6 +315,7 @@ func is_dialogue_open() -> bool:
 func _show_line() -> void:
 	dlg_text.text = str(_dlg_lines[_dlg_index])
 	dlg_text.visible_ratio = 0.0
+	_last_chars = 0
 	_dlg_typing = true
 	if _dlg_tween:
 		_dlg_tween.kill()
@@ -336,12 +349,25 @@ func _input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("toggle_help"):
 		help.visible = not help.visible
+	elif event.is_action_pressed("quest_log"):
+		_refresh_log()
+		quest_log.visible = not quest_log.visible
+		Sound.play_ui("open" if quest_log.visible else "close")
 	elif event is InputEventKey and event.pressed and (event as InputEventKey).physical_keycode == KEY_F3:
 		_fps.visible = not _fps.visible
 
 
 func _process(_delta: float) -> void:
 	dlg_arrow.visible = dialogue.visible and not _dlg_typing
+	# Animalese-style babble while the text types out.
+	if dialogue.visible and _dlg_typing:
+		var n := int(dlg_text.visible_ratio * dlg_text.get_total_character_count())
+		if n - _last_chars >= 2:
+			var txt := dlg_text.get_parsed_text()
+			var ch := txt.substr(clampi(n - 1, 0, txt.length() - 1), 1)
+			_last_chars = n
+			if ch.strip_edges() != "" and ch not in [".", ",", "!", "?", "…", "'"]:
+				Sound.babble(ch, _voice)
 	dlg_arrow.offset_top = -66 + sin(Time.get_ticks_msec() * 0.008) * 4.0
 	# Prompt bubble over the focused thing.
 	var cam := get_viewport().get_camera_3d()
@@ -366,3 +392,100 @@ func _process(_delta: float) -> void:
 		speed_label.text = "%d km/h" % roundi(absf(p.car.speed_kmh()))
 	else:
 		speed_pill.visible = false
+
+
+# ---------------------------------------------------------------------------
+# Quests
+# ---------------------------------------------------------------------------
+
+func _build_tracker() -> void:
+	tracker = VBoxContainer.new()
+	tracker.anchor_left = 1.0
+	tracker.anchor_right = 1.0
+	tracker.offset_left = -380
+	tracker.offset_right = -24
+	tracker.offset_top = 24
+	tracker.add_theme_constant_override("separation", 8)
+	tracker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(tracker)
+	quest_log = PanelContainer.new()
+	quest_log.add_theme_stylebox_override("panel", _panel_style(CREAM, 32, Vector2(36, 26)))
+	quest_log.anchor_left = 0.5
+	quest_log.anchor_right = 0.5
+	quest_log.anchor_top = 0.5
+	quest_log.anchor_bottom = 0.5
+	quest_log.offset_left = -340
+	quest_log.offset_right = 340
+	quest_log.offset_top = -250
+	quest_log.offset_bottom = 250
+	quest_log.visible = false
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 10)
+	quest_log.add_child(vb)
+	vb.add_child(_label("Quests", 34, ACCENT.darkened(0.15), _title_font))
+	_log_list = VBoxContainer.new()
+	_log_list.add_theme_constant_override("separation", 6)
+	vb.add_child(_log_list)
+	root.add_child(quest_log)
+	if Game.quests:
+		Game.quests.changed.connect(refresh_tracker)
+	else:
+		_hook_quests.call_deferred()
+
+
+func _hook_quests() -> void:
+	if Game.quests:
+		Game.quests.changed.connect(refresh_tracker)
+		refresh_tracker()
+
+
+func refresh_tracker() -> void:
+	for c in tracker.get_children():
+		c.queue_free()
+	var qm = Game.quests
+	if qm == null:
+		return
+	for id in qm.active_ids():
+		var q: Dictionary = qm.quests[id]
+		var s: Dictionary = qm.current_step(id)
+		var p := PanelContainer.new()
+		p.add_theme_stylebox_override("panel", _panel_style(Color(1, 0.975, 0.91, 0.9), 18, Vector2(16, 10)))
+		var vb := VBoxContainer.new()
+		vb.add_theme_constant_override("separation", 0)
+		p.add_child(vb)
+		vb.add_child(_label("✿ " + q["title"], 20, ACCENT.darkened(0.2), _title_font))
+		var t := str(s.get("text", ""))
+		var prog: String = qm.step_progress(id)
+		if prog != "":
+			t += "  (" + prog + ")"
+		if t != "":
+			var l := _label(t, 17, INK)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.custom_minimum_size.x = 320
+			vb.add_child(l)
+		tracker.add_child(p)
+	if quest_log.visible:
+		_refresh_log()
+
+
+func _refresh_log() -> void:
+	for c in _log_list.get_children():
+		c.queue_free()
+	var qm = Game.quests
+	if qm == null:
+		return
+	var any := false
+	for q in QuestData.QUESTS:
+		var st: String = qm.status(q["id"])
+		if st == "":
+			continue
+		any = true
+		var mark := "✔ " if st == "done" else "✿ "
+		var col := INK.lightened(0.35) if st == "done" else INK
+		_log_list.add_child(_label(mark + q["title"], 22, col, _bold_font))
+		if st == "active":
+			var s: Dictionary = qm.current_step(q["id"])
+			_log_list.add_child(_label("     " + str(s.get("text", "")), 18, INK.lightened(0.15)))
+	if not any:
+		_log_list.add_child(_label("No quests yet — try talking to the neighbours!", 20, INK))
+	_log_list.add_child(_label("(Q to close)", 16, INK.lightened(0.4)))

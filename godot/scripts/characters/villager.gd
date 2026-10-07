@@ -9,6 +9,7 @@ extends CharacterBody3D
 @export var lines: Array[String] = ["Hi there!"]
 @export var wander_radius := 7.0
 @export var speed := 1.4
+@export var voice := 1.0          ## babble pitch
 
 var home := Vector3.ZERO
 var model: Node3D
@@ -126,7 +127,11 @@ func _on_talk(_by: Node, _seat: Node3D) -> void:
 	if Game.hud == null:
 		return
 	_enter("talk")
+	Sound.play_ui("talk")
+	if Game.quests and await Game.quests.handle_talk(display_name, color):
+		_enter("idle")
+		return
 	var line: String = lines[_talk_index % lines.size()]
 	_talk_index += 1
-	await Game.hud.say(display_name, [line], color)
+	await Game.hud.say(display_name, [line], color, voice)
 	_enter("idle")

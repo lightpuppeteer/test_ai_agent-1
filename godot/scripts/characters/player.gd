@@ -63,8 +63,12 @@ func _unhandled_input(event: InputEvent) -> void:
 					exit_car()
 				elif Game.hud:
 					Game.hud.toast("Slow down to get out")
-	elif event.is_action_pressed("cycle_look") and pose == "move":
-		next_look()
+	elif event.is_action_pressed("cycle_look"):
+		# O: her outfit · Shift+O: his outfit.
+		var who: Person = Game.partner if Input.is_key_pressed(KEY_SHIFT) and Game.partner else self
+		var nm := who.next_look()
+		if Game.hud:
+			Game.hud.toast("👗 " + nm if who == self else "👕 " + nm)
 	elif event.is_action_pressed("toggle_time") and Game.atmosphere:
 		var p: String = Game.atmosphere.cycle_preset()
 		if Game.hud:

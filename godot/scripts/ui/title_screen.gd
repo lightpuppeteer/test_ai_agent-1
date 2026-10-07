@@ -25,6 +25,7 @@ func _ready() -> void:
 	_cam.current = true
 	if Game.player:
 		Game.player.input_enabled = false
+	Sound.override_music("title")
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -120,5 +121,7 @@ func start() -> void:
 		Game.player.input_enabled = true
 	if Game.hud:
 		Game.hud.root.visible = true
+	Sound.override_music("")
+	Sound.play_ui("open")
 	started.emit()
 	queue_free()

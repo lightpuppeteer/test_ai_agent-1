@@ -11,7 +11,9 @@ const LOOKS := [
 	"character-male-a", "character-male-b", "character-male-c", "character-male-d", "character-male-e", "character-male-f",
 ]
 
-@export var look := "character-female-f"
+## "her" / "him" build a custom avatar (see AvatarLooks); any other id is a Kenney mini character.
+@export var look := "her"
+var outfit := ""
 @export var walk_speed := 3.0
 @export var run_speed := 6.2
 @export var accel := 14.0
@@ -41,6 +43,10 @@ var _air_time := 0.0
 var _last_safe := Vector3.ZERO
 var _tween: Tween
 var _shape: CollisionShape3D
+## Footstep sounds (dB; set very low or disable for background characters).
+var footstep_db := -14.0
+var footsteps := true
+var _stride := 0.0
 
 
 func _ready() -> void:
@@ -99,7 +105,12 @@ func set_look(id: String) -> void:
 	look = id
 	if model:
 		model.queue_free()
-	model = Props.model("mini-characters/" + id)
+	if AvatarLooks.OUTFITS.has(id):
+		if outfit == "" or not AvatarLooks.OUTFITS[id].has(outfit):
+			outfit = AvatarLooks.OUTFITS[id][0]
+		model = Avatar.build(AvatarLooks.look(id, outfit))
+	else:
+		model = Props.model("mini-characters/" + id)
 	model.name = "Model"
 	model.scale = Vector3.ONE * Game.CHARACTER_SCALE
 	pose_pivot.add_child(model)
@@ -113,9 +124,26 @@ func set_look(id: String) -> void:
 	_play("idle", 0.0)
 
 
-func next_look() -> void:
+## Cycles outfits (custom avatars) or Kenney looks. Returns a display name.
+func next_look() -> String:
+	if AvatarLooks.OUTFITS.has(look):
+		var list: Array = AvatarLooks.OUTFITS[look]
+		set_outfit(list[(list.find(outfit) + 1) % list.size()])
+		return AvatarLooks.OUTFIT_NAMES.get(outfit, outfit)
 	var i := LOOKS.find(look)
 	set_look(LOOKS[(i + 1) % LOOKS.size()])
+	return look
+
+
+func set_outfit(o: String) -> void:
+	outfit = o
+	var keep_anim := _anim_name
+	var pos := anim.current_animation_position if anim and anim.is_playing() else 0.0
+	set_look(look)
+	if keep_anim != "":
+		_anim_name = ""
+		_play(keep_anim, 0.0)
+		anim.seek(pos, true)
 
 
 func _play(anim_name: String, blend: float = 0.18, speed: float = 1.0) -> void:
@@ -160,6 +188,8 @@ func _physics_process(delta: float) -> void:
 		if want_jump:
 			velocity.y = jump_velocity
 			_play("jump", 0.08)
+			if footsteps:
+				Sound.play("jump", footstep_db + 4.0, randf_range(0.95, 1.05))
 	else:
 		_air_time += delta
 		velocity.y -= gravity * delta
@@ -171,6 +201,13 @@ func _physics_process(delta: float) -> void:
 		facing = lerp_angle(facing, atan2(-target.x, -target.z), clampf(turn_speed * delta, 0.0, 1.0))
 	rotation.y = facing
 	_animate_locomotion(hv.length())
+	# Footsteps: one per stride, louder when running.
+	if footsteps and is_on_floor():
+		_stride += hv.length() * delta
+		var stride_len := 0.85 if hv.length() > run_speed * 0.75 else 0.62
+		if _stride > stride_len:
+			_stride = 0.0
+			Sound.footstep(Sound.surface_at(global_position), footstep_db + (2.0 if want_run else 0.0))
 
 
 func _animate_locomotion(spd: float) -> void:
@@ -235,6 +272,8 @@ func enter_anchor(seat: Node3D, new_pose: String, owner_it: Interactable = null,
 	_tween.tween_method(func(y: float) -> void: rotation.y = y; facing = y, rotation.y, rotation.y + wrapf(yaw - rotation.y, -PI, PI), duration)
 	await _tween.finished
 	pose = new_pose
+	if footsteps and new_pose != "drive":
+		Sound.play("sit", footstep_db + 2.0, randf_range(0.9, 1.1))
 	pose_changed.emit(pose)
 
 

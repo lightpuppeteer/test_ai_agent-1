@@ -20,6 +20,7 @@ var _rear_wheels: Array[VehicleWheel3D] = []
 var _scale := 1.25
 var _half_width := 0.9
 var lights: Array[Light3D] = []
+var _engine: AudioStreamPlayer3D
 
 
 func _ready() -> void:
@@ -32,6 +33,7 @@ func _ready() -> void:
 	_scale = Props.kit_scale(model_id)
 	_build()
 	can_sleep = true
+	_engine = Sound.loop_3d("car_engine", self, 6.0, -80.0)
 
 
 func _build() -> void:
@@ -181,6 +183,10 @@ func _physics_process(delta: float) -> void:
 	for l in lights:
 		l.visible = lamp_on and driver != null
 		l.light_energy = 2.5 if l.visible else 0.0
+	if _engine:
+		var target_db := -80.0 if driver == null else -16.0 + clampf(absf(speed_kmh()) / max_speed_kmh, 0.0, 1.0) * 6.0
+		_engine.volume_db = move_toward(_engine.volume_db, target_db, delta * 60.0)
+		_engine.pitch_scale = 0.8 + clampf(absf(speed_kmh()) / max_speed_kmh, 0.0, 1.0) * 1.1 + absf(engine_force) / max_engine_force * 0.15
 	if driver == null:
 		return
 	var throttle := 0.0

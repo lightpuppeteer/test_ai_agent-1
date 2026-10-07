@@ -27,6 +27,7 @@ const BINDINGS := {
 	"toggle_time": [KEY_T],
 	"screenshot": [KEY_F12],
 	"debug_physics": [KEY_P],
+	"quest_log": [KEY_Q],
 }
 
 var player: Node = null
@@ -39,11 +40,16 @@ var ocean: Node = null
 var atmosphere: Node = null
 var interaction: Node = null
 var chapters: Node = null
+## AudioManager (play_sfx, play_jingle, set_music…) — may be null in tools/tests.
+var audio: Node = null
+## QuestManager — may be null in tools/tests.
+var quests: Node = null
 
 ## Parsed `-- key=value` user arguments (e.g. `--shots=/tmp/out`).
 var options := {}
 
 signal player_registered(p)
+signal photo_taken
 
 
 func _enter_tree() -> void:
@@ -127,6 +133,8 @@ func save_screenshot(path: String = "") -> String:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("screenshot"):
 		var p := save_screenshot()
+		photo_taken.emit()
+		Sound.play_ui("camera")
 		if hud:
 			hud.toast("Photo saved ✿")
 		print("[game] screenshot ", p)

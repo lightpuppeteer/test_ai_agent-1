@@ -20,6 +20,12 @@ boot_splash/show_image=false
 [autoload]
 
 Game="*res://scripts/core/game.gd"
+Sound="*res://scripts/audio/sound.gd"
+
+[debug]
+
+file_logging/enable_file_logging=true
+file_logging/log_path.editor="res://_shots/godot.log"
 
 [display]
 

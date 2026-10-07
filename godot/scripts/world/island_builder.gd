@@ -241,6 +241,11 @@ func _town() -> void:
 	water.position = Vector3(c.x, ground(c.x, c.y) + 0.62, c.y)
 	add_child(water)
 	_fountain_spray(Vector3(c.x, ground(c.x, c.y) + 1.6, c.y))
+	var fs := Node3D.new()
+	fs.name = "FountainSound"
+	add_child(fs)
+	fs.position = Vector3(c.x, ground(c.x, c.y) + 1.0, c.y)
+	Sound.loop_3d("amb_fountain", fs, 3.0, -6.0)
 
 	# Benches facing the fountain, lamps around the rim.
 	for k in 4:

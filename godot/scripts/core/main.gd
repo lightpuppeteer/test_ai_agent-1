@@ -66,6 +66,10 @@ func _ready() -> void:
 	fx.name = "AmbientFX"
 	add_child(fx)
 
+	var quests := QuestManager.new()
+	quests.name = "Quests"
+	add_child(quests)
+
 	var chapters := ChapterManager.new()
 	chapters.name = "Chapters"
 	add_child(chapters)

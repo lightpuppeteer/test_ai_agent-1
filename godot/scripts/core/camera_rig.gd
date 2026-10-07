@@ -22,6 +22,7 @@ var _last_input_time := -100.0
 
 func _ready() -> void:
 	Game.camera_rig = self
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	arm = SpringArm3D.new()
 	arm.name = "Arm"
 	arm.collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS

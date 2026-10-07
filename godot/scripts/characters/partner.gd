@@ -3,7 +3,7 @@ extends Person
 ## Your companion. Strolls along beside you, sits next to you on benches, lies
 ## on the towel beside yours and rides along in the car.
 
-@export var display_name := "Him"
+@export var display_name := "Marco"
 @export var follow_distance := 2.2
 @export var lines: Array[String] = [
 	"I love days like this with you.",
@@ -20,10 +20,11 @@ var _goal: Variant = null
 
 
 func _ready() -> void:
-	look = "character-male-a"
+	look = "him"
 	walk_speed = 3.1
 	run_speed = 6.6
 	super._ready()
+	footstep_db = -19.0
 	Game.partner = self
 	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES
 	interactable = Interactable.new()
@@ -50,7 +51,9 @@ func _on_talk(by: Node, _seat: Node3D) -> void:
 	var p := by as Node3D
 	facing = atan2(-(p.global_position.x - global_position.x), -(p.global_position.z - global_position.z))
 	gesture("emote-yes")
-	await Game.hud.say(display_name, [lines[_line % lines.size()]], Color(0.45, 0.66, 0.95))
+	if Game.quests and await Game.quests.handle_talk("partner", Color(0.45, 0.66, 0.95)):
+		return
+	await Game.hud.say(display_name, [lines[_line % lines.size()]], Color(0.45, 0.66, 0.95), 0.8)
 	_line += 1
 
 
