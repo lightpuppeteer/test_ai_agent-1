@@ -70,6 +70,13 @@ Chapters live in `scripts/chapters/`. Copy `shore_chapter.gd`, then set a title,
 `ChapterManager.CHAPTERS`. Villager lines are in `scripts/core/main.gd`, and the partner's lines are in
 `scripts/characters/partner.gd`.
 
+## Building the Mac app
+
+`export_presets.cfg` has a **macOS** preset (universal Intel + Apple Silicon, ad-hoc signed, icon `icon_app.png`).
+With the 4.7.2 export templates installed: Project → Export → macOS, or
+`godot --headless --path godot --export-release "macOS" build/OurLittleIsland.zip`.
+The app isn't notarized, so the first launch on another Mac may need right-click → Open.
+
 ## Structure
 
 ```

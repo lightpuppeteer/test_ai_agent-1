@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Shore Chapters"
+config/name="Our Little Island"
 config/description="A cozy little island of shared memories."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
@@ -50,6 +50,7 @@ common/physics_ticks_per_second=60
 common/physics_interpolation=true
 
 [rendering]
+textures/vram_compression/import_etc2_astc=true
 
 renderer/rendering_method="forward_plus"
 anti_aliasing/quality/msaa_3d=2
