@@ -174,7 +174,7 @@ func _use_point(parent: Node3D, at: Vector3, prompt: String, tag: String, radius
 func _pizza_place() -> void:
 	var room := _interior("pizza", "Pizzeria Amore", 0, Vector3(12, 3.4, 9), Color(0.98, 0.9, 0.8), Color(0.75, 0.55, 0.38))
 	var info := _building(-28.0, 1.0, 180.0, "c", Color(0.92, 0.3, 0.28), 1.3, room, "Enter Pizzeria Amore")
-	var sign := Props3D.sign("PIZZERIA AMORE", Color(0.85, 0.2, 0.2), Color(1, 0.97, 0.9), 5.0, 1.0)
+	var sign := Props3D.sign_board("pizzeria", 5.0)
 	add_child(sign)
 	sign.global_position = info["front"] + Vector3(0, B.ground(-28, -2) + 3.4, 0) + info["fwd"] * 0.25
 	sign.rotation.y = PI
@@ -210,9 +210,9 @@ func _pizza_place() -> void:
 	glow.omni_range = 4.0
 	glow.position = Vector3(-3.8, 1.0, -2.6)
 	room.add_child(glow)
-	var menu := Props3D.room_label("PIZZA AMORE ♥\nMargherita · Pepperoni\nQuattro Formaggi · Tiramisu", 0.006)
+	var menu := Props3D.sign_board("menu", 1.4, true, Color(0.42, 0.28, 0.18), 0.06)
 	room.add_child(menu)
-	menu.position = Vector3(0.5, 2.3, -4.38)
+	menu.position = Vector3(0.5, 1.95, -4.42)
 	# Tables for other customers…
 	for p in [Vector3(-3.5, 0, 0.5), Vector3(-0.5, 0, 1.5), Vector3(3.5, 0, 1.0)]:
 		room.prop("furniture-kit/tableCloth", p, 0.0, 1.0)
@@ -261,7 +261,7 @@ var cinema_screen: CinemaScreen
 func _cinema() -> void:
 	var room := _interior("cinema", "Cinema Paraíso", 1, Vector3(14, 5.0, 16), Color(0.32, 0.18, 0.24), Color(0.5, 0.18, 0.22))
 	var info := _building(28.0, 1.0, 180.0, "h", Color(0.25, 0.25, 0.35), 1.35, room, "Enter the cinema")
-	var sign := Props3D.sign("★ CINEMA ★", Color(0.18, 0.15, 0.28), Color(1.0, 0.85, 0.35), 5.0, 1.1)
+	var sign := Props3D.sign_board("cinema", 5.0, true, Color(0.16, 0.12, 0.26))
 	add_child(sign)
 	sign.global_position = info["front"] + Vector3(0, B.ground(28, -2) + 3.6, 0) + info["fwd"] * 0.25
 	sign.rotation.y = PI
@@ -276,18 +276,13 @@ func _cinema() -> void:
 		add_child(bulb)
 		bulb.global_position = sign.global_position + Vector3(-2.4 + i * 0.6, -0.65, -0.1)
 	# Posters by the door.
-	var titles := [["THE THING\nIN THE ATTIC", Color(0.15, 0.1, 0.15), Color(0.95, 0.2, 0.25)],
-			["PIZZA COPS 3", Color(1.0, 0.8, 0.25), Color(0.35, 0.2, 0.1)],
-			["A DOG NAMED\nSUNDAY", Color(0.35, 0.5, 0.75), Color(1, 1, 1)]]
+	var posters := ["poster_horror", "poster_comedy", "poster_drama"]
 	for i in 3:
-		var t: Array = titles[i]
-		var poster := Props3D.sign(t[0], t[1], t[2], 1.3, 1.8)
+		var poster := Props3D.sign_board(posters[i], 1.15, true, Color(0.85, 0.62, 0.2), 0.08)
 		add_child(poster)
-		poster.global_position = info["front"] + Vector3(-3.2 + i * 3.2 if i != 1 else 3.2, B.ground(28, -2) + 1.5, 0) + info["fwd"] * 0.12
+		var px: float = [-3.2, 3.2, 4.6][i]
+		poster.global_position = info["front"] + Vector3(px, B.ground(28, -2) + 1.55, 0) + info["fwd"] * 0.1
 		poster.rotation.y = PI
-		var l: Label3D = poster.get_child(1)
-		l.font_size = 64
-		l.pixel_size = 0.004
 	# --- inside: a little lobby at the door end, the screen at the far end.
 	cinema_screen = CinemaScreen.new()
 	room.add_child(cinema_screen)
@@ -336,9 +331,9 @@ func _cinema() -> void:
 	pop.scale = Vector3.ONE * 2.2
 	room.add_child(pop)
 	pop.position = Vector3(4.6, 1.16, 5.1)
-	var stand_sign := Props3D.room_label("POPCORN & DRINKS", 0.006, Color(1, 0.9, 0.5))
+	var stand_sign := Props3D.sign_board("popcorn", 2.2, true, Color(0.75, 0.2, 0.2), 0.06)
 	room.add_child(stand_sign)
-	stand_sign.position = Vector3(4.1, 2.6, 5.5)
+	stand_sign.position = Vector3(6.94, 2.55, 5.5)
 	stand_sign.rotation.y = deg_to_rad(-90)
 	_use_point(room, Vector3(3.6, 1.0, 5.5), "Get popcorn & drinks", "popcorn_stand", 2.2)
 	spots["cinema_door"] = info["door"]
@@ -357,21 +352,21 @@ func _our_house() -> void:
 	var room := _interior("house", "Our House", 2, Vector3(16, 3.2, 12), Color(0.97, 0.94, 0.88), Color(0.8, 0.62, 0.45))
 	var info := _building(28.0, -23.0, 0.0, "e", Color(0.66, 0.5, 0.9), 1.3, room, "Enter our house")
 	spots["house_door"] = info["door"]
-	var mailbox := Props3D.room_label("♥ Our House ♥", 0.008, Color(0.66, 0.4, 0.8))
+	var mailbox := Props3D.post_sign("our_house", 1.3, 0.75)
 	add_child(mailbox)
-	mailbox.global_position = info["outside"] + Vector3(2.0, 1.4, 0)
-	mailbox.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	var mp: Vector3 = info["outside"] + Vector3(2.4, 0, 0)
+	mailbox.global_position = Vector3(mp.x, B.ground(mp.x, mp.z), mp.z)
+	mailbox.rotation.y = atan2(info["fwd"].x, info["fwd"].z)
 	# Interior walls split it into living room (front), bedroom (back left) and office (back right).
 	_house_walls(room)
 	room.window(Vector3(-4.0, 1.6, -5.95), 0.0)
 	room.window(Vector3(4.0, 1.6, -5.95), 0.0)
 	room.window(Vector3(-7.95, 1.6, 3.0), 90.0)
 	room.window(Vector3(7.95, 1.6, 3.0), -90.0)
-	for p in [[Vector3(-2.0, 0, 4.0), "LIVING ROOM"], [Vector3(-4.0, 0, -3.5), "BEDROOM"], [Vector3(4.0, 0, -3.5), "OFFICE"]]:
-		var l := Props3D.room_label(p[1], 0.005, Color(0.55, 0.42, 0.32))
+	for p in [[Vector3(-2.0, 0, 4.0), "room_living"], [Vector3(-4.0, 0, -3.5), "room_bedroom"], [Vector3(4.0, 0, -3.5), "room_office"]]:
+		var l := Props3D.room_plaque(p[1], 1.4)
 		room.add_child(l)
-		l.position = p[0] + Vector3(0, 2.9, 0)
-		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.position = p[0] + Vector3(0, 2.75, 0)
 	var decor := DecorSystem.new()
 	decor.name = "Decor"
 	room.add_child(decor)
@@ -401,10 +396,9 @@ func _house_walls(room: Interior) -> void:
 
 func _her_place() -> void:
 	B.house(-28.0, -23.0, 0.0, "a", Color(0.95, 0.55, 0.7), 1.25)
-	var l := Props3D.room_label(Game.HER_NAME + "'s place ✿", 0.008, Color(0.9, 0.45, 0.6))
+	var l := Props3D.post_sign("her_place", 1.2, 0.7)
 	add_child(l)
-	l.global_position = Vector3(-24.5, B.ground(-24.5, -18.0) + 1.5, -18.0)
-	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.global_position = Vector3(-24.5, B.ground(-24.5, -18.0), -18.0)
 	var yoggi := Yoggi.new()
 	yoggi.name = "Yoggi"
 	add_child(yoggi)
@@ -422,7 +416,7 @@ func _her_place() -> void:
 func _hotel() -> void:
 	var room := _interior("hotel", "Hotel Suite", 3, Vector3(12, 3.6, 10), Color(0.95, 0.93, 0.96), Color(0.92, 0.88, 0.84), true)
 	var info := _building(-56.0, -15.0, 90.0, "p", Color(0.4, 0.75, 0.8), 1.6, room, "Enter the Hotel & Spa")
-	var sign := Props3D.sign("HOTEL & SPA", Color(0.3, 0.7, 0.75), Color(1, 1, 1), 4.4, 0.9)
+	var sign := Props3D.sign_board("hotel", 4.4, true, Color(0.2, 0.5, 0.55))
 	add_child(sign)
 	sign.global_position = info["front"] + Vector3(0, B.ground(-52, -15) + 3.8, 0) + info["fwd"] * 0.25
 	sign.rotation.y = deg_to_rad(90)
@@ -495,9 +489,9 @@ func _hotel() -> void:
 		room.prop("furniture-kit/pottedPlant", p, 0.0, 1.3)
 	room.prop("furniture-kit/bathtub", Vector3(4.0, 0, 2.5), -90.0, 1.0)
 	room.prop("furniture-kit/rugRound", Vector3(0, 0, 2.0), 0.0, 1.4, "")
-	var robe_l := Props3D.room_label("SPA ♨ RELAX", 0.006, Color(0.3, 0.6, 0.65))
+	var robe_l := Props3D.sign_board("spa", 2.2, true, Color(0.55, 0.78, 0.74), 0.05)
 	room.add_child(robe_l)
-	robe_l.position = Vector3(0, 3.0, -4.85)
+	robe_l.position = Vector3(0, 2.75, -4.93)
 
 
 # ---------------------------------------------------------------------------
@@ -530,9 +524,9 @@ func _picnic_garden() -> void:
 		var fl := Props3D.blocks([Props3D.b(Vector3(0.18, 0.12, 0.18), Vector3.ZERO, [Color(1, 0.6, 0.7), Color(1, 0.95, 0.6), Color(0.85, 0.6, 1)][i % 3], {"bevel": 0.05})])
 		add_child(fl)
 		fl.global_position = arch.global_position + Vector3(randf_range(-0.12, 0.12), 0.12, -1.2 + i * 0.27)
-	var lbl := Props3D.room_label("✿ The Garden ✿", 0.008, Color(0.85, 0.45, 0.6))
+	var lbl := Props3D.sign_board("garden", 2.4, true, Color(0.45, 0.3, 0.18), 0.08)
 	add_child(lbl)
-	lbl.global_position = arch.global_position + Vector3(-0.2, 0.6, 0)
+	lbl.global_position = arch.global_position + Vector3(-0.17, 0.47, 0)
 	lbl.rotation.y = deg_to_rad(-90)
 	# Flower beds and a shady tree.
 	B.soil_bed(c.x + 2.5, c.y - 3.0, 1.1, ["nature-kit/flower_redA", "nature-kit/flower_yellowA", "nature-kit/flower_purpleA"])
@@ -648,11 +642,12 @@ func _causeway() -> void:
 		var end: Vector3 = e[0]
 		var sgn: float = e[1]
 		var outward := dir * sgn
-		var land := end + outward * 5.0
+		const RUN := 7.5        # long and gentle, so the car and Marco roll right up
+		var land := end + outward * RUN
 		var gy := maxf(B.ground(land.x, land.z), 0.2)
 		var ramp := CollisionShape3D.new()
 		var rbs := BoxShape3D.new()
-		rbs.size = Vector3(width, 0.4, 5.6)
+		rbs.size = Vector3(width, 0.4, RUN + 1.2)
 		ramp.shape = rbs
 		var rnode := StaticBody3D.new()
 		rnode.collision_layer = Game.PHYS_WORLD
@@ -664,15 +659,22 @@ func _causeway() -> void:
 		rmesh.mesh = rmm
 		rmesh.material_override = mat
 		rnode.add_child(rmesh)
-		var centre := end + outward * 2.6
+		var centre := end + outward * (RUN * 0.5)
 		centre.y = (DECK_Y + gy) * 0.5 - 0.2
 		rnode.global_position = centre
 		rnode.rotation.y = yaw
-		rnode.rotate_object_local(Vector3.RIGHT, -atan2(DECK_Y - gy, 5.2) * sgn)
+		# Local +Z points along the causeway (towards the oasis): tilt so the top
+		# surface runs from the deck height to the ground height.
+		rnode.rotate_object_local(Vector3.RIGHT, -atan2((gy - DECK_Y) * sgn, RUN))
 	spots["causeway_start"] = _marker(CAUSEWAY_FROM)
-	var sign := Props3D.sign("→ OASIS", Color(0.95, 0.6, 0.3), Color(1, 1, 1), 2.2, 0.6)
+	var sign := Node3D.new()
+	var arrow := Props3D.sign_board("oasis", 2.0, false)
+	arrow.position.y = 1.55
+	sign.add_child(arrow)
+	sign.add_child(Props3D.blocks([Props3D.b(Vector3(0.14, 1.9, 0.14), Vector3(-0.62, 0.95, -0.06), Color(0.5, 0.33, 0.2), {"bevel": 0.03})]))
 	add_child(sign)
-	sign.global_position = CAUSEWAY_FROM - dir * 2.0 + Vector3(cos(yaw), 0, -sin(yaw)) * 3.6 + Vector3(0, B.ground(CAUSEWAY_FROM.x, CAUSEWAY_FROM.z) + 1.6, 0)
+	var sp := CAUSEWAY_FROM - dir * 2.0 + Vector3(cos(yaw), 0, -sin(yaw)) * 3.6
+	sign.global_position = Vector3(sp.x, B.ground(sp.x, sp.z), sp.z)
 	sign.rotation.y = yaw + PI
 	B.occupied.append(Vector3(CAUSEWAY_FROM.x, CAUSEWAY_FROM.z, 5.0))
 

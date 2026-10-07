@@ -26,15 +26,16 @@ float ground_at(vec2 xz) {
 }
 
 vec3 wave(vec2 xz) {
-	// returns (height, dh/dx, dh/dz)
+	// returns (height, dh/dx, dh/dz); calm beyond the detailed patch (see ocean.gd)
 	vec3 r = vec3(0.0);
+	float fade = 1.0 - smoothstep(170.0, 195.0, max(abs(xz.x), abs(xz.y)));
 	for (int i = 0; i < 3; i++) {
 		vec2 d = normalize(waves[i].xy);
 		float k = 6.2831853 / waves[i].w;
 		float w = sqrt(9.8 * k);
 		float ph = k * dot(d, xz) - w * t + float(i) * 1.7;
-		r.x += waves[i].z * sin(ph);
-		r.yz += waves[i].z * k * cos(ph) * d;
+		r.x += waves[i].z * sin(ph) * fade;
+		r.yz += waves[i].z * k * cos(ph) * d * fade;
 	}
 	return r;
 }

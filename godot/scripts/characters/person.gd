@@ -54,6 +54,7 @@ var _lean_tween: Tween
 
 
 func _ready() -> void:
+	pose_changed.connect(_refresh_held)
 	collision_layer = Game.PHYS_CHARACTERS
 	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES | Game.PHYS_WALLS
 	floor_snap_length = 0.45
@@ -202,6 +203,8 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= gravity * delta
 	want_jump = false
 	move_and_slide()
+	if is_on_floor() and is_on_wall() and target.length_squared() > 0.04:
+		_try_step_up(target)
 	_keep_on_land()
 	# Face the movement direction.
 	if target.length_squared() > 0.01:
@@ -234,15 +237,32 @@ func _animate_locomotion(spd: float) -> void:
 		_play("idle", 0.25)
 
 
+## Walks up steps and kerbs (up to STEP_UP high) instead of bumping into them.
+const STEP_UP := 0.34
+
+func _try_step_up(dir: Vector3) -> void:
+	var xf := global_transform
+	var up := Vector3(0, STEP_UP, 0)
+	if test_move(xf, up):
+		return
+	var fwd := Vector3(dir.x, 0, dir.z).normalized() * 0.28
+	if test_move(xf.translated(up), fwd):
+		return
+	global_position += up + fwd * 0.6
+	velocity.y = 0.0
+
+
 func _keep_on_land() -> void:
 	# No swimming: shallow wading is fine, deeper water pushes you back.
 	var t: Terrain = Game.terrain
 	if t == null:
 		return
 	var ground_h: float = t.height_at(global_position.x, global_position.z)
-	# Standing on something above the terrain (the pier, a bridge)? Then it's not swimming.
-	if is_on_floor() and global_position.y - ground_h > 0.6:
-		_last_safe = global_position
+	# Standing on (or stepping across) something above the terrain — the pier, the
+	# causeway — is not swimming, even on a frame where we're briefly airborne.
+	if global_position.y - ground_h > 0.6 and global_position.y > WorldLayout.WATER_LEVEL - 0.2:
+		if is_on_floor():
+			_last_safe = global_position
 		return
 	if ground_h < -0.45:
 		# Fell off the pier or walked out too deep: back to the last safe spot.
@@ -261,6 +281,16 @@ func teleport(pos: Vector3, yaw: float = NAN) -> void:
 		rotation.y = yaw
 	_last_safe = pos
 	reset_physics_interpolation()
+
+
+## Teleports onto whatever floor is under `pos` (terrain, pier, room floor).
+func teleport_grounded(pos: Vector3, yaw: float = NAN) -> void:
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 2.5, 0), pos - Vector3(0, 4.0, 0), Game.PHYS_WORLD | Game.PHYS_PROPS)
+	var hit := space.intersect_ray(q)
+	if not hit.is_empty():
+		pos.y = hit["position"].y + 0.03
+	teleport(pos, yaw)
 
 
 # ---------------------------------------------------------------------------
@@ -349,11 +379,35 @@ func leave_anchor(exit_pos: Variant = null, duration: float = 0.3) -> void:
 		dest = seat.global_position + seat.global_transform.basis.x.normalized() * 0.9
 	else:
 		dest = seat.global_position + fwd.normalized() * 0.75
-	if Game.terrain:
+	var indoors := Game.location != "outside"
+	if indoors:
+		# Indoors: step off onto the floor beside the bed / chair.
+		var it: Interior = Places.interiors.get(Game.location)
+		dest.y = (it.global_position.y if it else 0.0) + 0.05
+	elif Game.terrain:
 		dest.y = Game.terrain.height_at(dest.x, dest.z) + 0.05
 		# Standing on props (e.g. the dock): keep the seat's height if it's higher.
 		if seat.global_position.y - dest.y > 0.6 and pose != "drive":
 			dest.y = seat.global_position.y - 0.4
+	if exit_pos == null and pose != "drive":
+		# Make sure it's somewhere you can actually walk (not inside the furniture):
+		# try further out on each side until a spot is on the walkable floor.
+		var floor_y := dest.y
+		var dirs := [seat.global_transform.basis.x, -seat.global_transform.basis.x, fwd, -fwd] if pose == "lie" else [fwd, seat.global_transform.basis.x, -seat.global_transform.basis.x, -fwd]
+		var found := false
+		for k: float in [0.8, 1.4, 2.0, 2.7, 3.4]:
+			for dv in dirs:
+				var dd: Vector3 = dv
+				dd.y = 0.0
+				var cand := seat.global_position + dd.normalized() * k
+				cand.y = floor_y
+				var on_nav := NavBaker.snap(get_world_3d(), cand)
+				if Vector2(on_nav.x - cand.x, on_nav.z - cand.z).length() < 0.35 and absf(on_nav.y - floor_y) < 0.4:
+					dest = on_nav + Vector3(0, 0.05, 0)
+					found = true
+					break
+			if found:
+				break
 	pose = "transition"
 	if anchor_owner:
 		anchor_owner.release(self)
@@ -427,6 +481,29 @@ func has_accessory(acc: String) -> bool:
 	return _accessories.has(acc)
 
 
+func _seated() -> bool:
+	return pose == "sit" or pose == "lie" or pose == "drive"
+
+
+## Snacks move from hand to lap (and back) when sitting down / getting up.
+func _refresh_held(_p: String) -> void:
+	for acc in ["popcorn", "drink"]:
+		if _accessories.has(acc):
+			if _accessory_nodes.has(acc) and is_instance_valid(_accessory_nodes[acc]):
+				_accessory_nodes[acc].free()
+			_accessory_nodes.erase(acc)
+			_attach_accessory(acc)
+
+
+## World position of an accessory (e.g. where popcorn pops out of the bucket).
+func accessory_point(acc: String) -> Variant:
+	var n: Node3D = _accessory_nodes.get(acc)
+	if n == null or not is_instance_valid(n) or n.get_child_count() == 0:
+		return null
+	var root := n.get_child(0) as Node3D
+	return (root.get_child(0) as Node3D).global_position if root and root.get_child_count() > 0 else n.global_position
+
+
 func _attach_accessory(acc: String) -> void:
 	if _accessory_nodes.has(acc) and is_instance_valid(_accessory_nodes[acc]):
 		return
@@ -480,16 +557,19 @@ func _attach_accessory(acc: String) -> void:
 			d.position = Vector3(0, -0.08, 0.075)
 			d.rotation.x = PI * 0.5
 			root.add_child(d)
-		"popcorn":
-			bone = "leg-right"
-			root.add_child(Props3D.popcorn())
-			root.get_child(0).position = Vector3(0.04, -0.07, 0.14)
-			root.get_child(0).rotation.x = -PI * 0.5
-		"drink":
-			bone = "leg-left"
-			root.add_child(Props3D.drink())
-			root.get_child(0).position = Vector3(-0.03, -0.07, 0.13)
-			root.get_child(0).rotation.x = -PI * 0.5
+		"popcorn", "drink":
+			var item := Props3D.popcorn() if acc == "popcorn" else Props3D.drink()
+			root.add_child(item)
+			if _seated():
+				# On the lap.
+				bone = "leg-right" if acc == "popcorn" else "leg-left"
+				item.position = Vector3(0.04, -0.07, 0.14) if acc == "popcorn" else Vector3(-0.03, -0.07, 0.13)
+				item.rotation.x = -PI * 0.5
+			else:
+				# Carried in the left hand, upright.
+				bone = "arm-left"
+				item.position = Vector3(Avatar.ARM_END - 0.02, 0.0, 0.05)
+				item.rotation.z = PI * 0.5
 		"yoggi":
 			bone = "torso"
 			var cat := Yoggi.make_model()

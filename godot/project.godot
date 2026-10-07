@@ -31,6 +31,7 @@ file_logging/log_path.editor="res://_shots/godot.log"
 
 window/size/viewport_width=1600
 window/size/viewport_height=900
+window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
 [gui]
@@ -45,6 +46,9 @@ theme/custom_font="res://assets/fonts/Nunito.ttf"
 3d_physics/layer_4="props"
 
 [physics]
+
+3d/physics_engine="Jolt Physics"
+
 
 common/physics_ticks_per_second=60
 common/physics_interpolation=true

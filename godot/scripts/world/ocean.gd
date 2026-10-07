@@ -17,10 +17,6 @@ var material: ShaderMaterial
 
 func _ready() -> void:
 	Game.ocean = self
-	var mesh := PlaneMesh.new()
-	mesh.size = Vector2(1400, 1400)
-	mesh.subdivide_width = 350
-	mesh.subdivide_depth = 350
 	material = ShaderMaterial.new()
 	material.shader = SHADER
 	material.set_shader_parameter("waves", WAVES)
@@ -31,12 +27,31 @@ func _ready() -> void:
 		var texel := Terrain.SIZE / float(Terrain.N - 1)
 		# Texel centres line up with the heightfield vertices.
 		material.set_shader_parameter("ground_rect", Vector4(-half - texel * 0.5, -half - texel * 0.5, Terrain.SIZE + texel, Terrain.SIZE + texel))
+	# A detailed patch around the island (waves fade out at its rim) and a flat,
+	# coarse skirt out to the horizon.
+	_patch("Sea", Vector2(INNER * 2.0, INNER * 2.0), Vector2.ZERO, int(INNER))
+	var outer := FAR - INNER
+	_patch("SeaN", Vector2(FAR * 2.0, outer), Vector2(0, -INNER - outer * 0.5), 6)
+	_patch("SeaS", Vector2(FAR * 2.0, outer), Vector2(0, INNER + outer * 0.5), 6)
+	_patch("SeaW", Vector2(outer, INNER * 2.0), Vector2(-INNER - outer * 0.5, 0), 6)
+	_patch("SeaE", Vector2(outer, INNER * 2.0), Vector2(INNER + outer * 0.5, 0), 6)
+
+
+const INNER := 200.0     # half-size of the wavy patch
+const FAR := 700.0       # half-size of the whole sea
+
+
+func _patch(nm: String, size: Vector2, at: Vector2, subdiv: int) -> void:
+	var mesh := PlaneMesh.new()
+	mesh.size = size
+	mesh.subdivide_width = subdiv
+	mesh.subdivide_depth = subdiv
 	mesh.material = material
 	var mi := MeshInstance3D.new()
-	mi.name = "Sea"
+	mi.name = nm
 	mi.mesh = mesh
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.position.y = WorldLayout.WATER_LEVEL
+	mi.position = Vector3(at.x, WorldLayout.WATER_LEVEL, at.y)
 	add_child(mi)
 
 
@@ -59,5 +74,10 @@ func height_at(x: float, z: float, at_time: float = -1.0) -> float:
 		var d := Vector2(w.x, w.y).normalized()
 		var k := TAU / w.w
 		var om := sqrt(9.8 * k)
-		h += w.z * sin(k * d.dot(Vector2(x, z)) - om * tt + float(i) * 1.7)
+		h += w.z * sin(k * d.dot(Vector2(x, z)) - om * tt + float(i) * 1.7) * wave_fade(x, z)
 	return h
+
+
+## Waves calm down towards the edge of the detailed patch (matches the shader).
+static func wave_fade(x: float, z: float) -> float:
+	return 1.0 - smoothstep(INNER - 30.0, INNER - 5.0, maxf(absf(x), absf(z)))

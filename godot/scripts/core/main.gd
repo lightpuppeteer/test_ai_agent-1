@@ -93,6 +93,15 @@ func _ready() -> void:
 	quests.name = "Quests"
 	add_child(quests)
 
+	# Walkable areas for Marco and Yoggi (baked on a worker thread).
+	(func() -> void: NavBaker.bake_all(self)).call_deferred()
+	# Compile shaders behind the title screen (not during screenshot runs).
+	if not Game.options.has("shots"):
+		var warm := Warmup.new()
+		warm.name = "Warmup"
+		add_child(warm)
+		warm.run.call_deferred()
+
 	var chapters := ChapterManager.new()
 	chapters.name = "Chapters"
 	add_child(chapters)

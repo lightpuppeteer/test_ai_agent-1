@@ -260,6 +260,75 @@ static func giant_bed() -> Node3D:
 	return n
 
 
+## A painted signboard: the artwork from assets/signs/<art>.png on a thin
+## board (so nothing pokes out of it). Width in metres; height follows the art.
+## `backing`: draw a wooden board behind (false for cut-out shapes).
+static func sign_board(art: String, width: float, backing: bool = true, frame: Color = Color(0.42, 0.28, 0.18), depth: float = 0.1) -> Node3D:
+	var tex: Texture2D = load("res://assets/signs/%s.png" % art)
+	var n := Node3D.new()
+	n.name = "Sign_" + art
+	var height := width * float(tex.get_height()) / float(tex.get_width())
+	if backing:
+		n.add_child(blocks([b(Vector3(width * 0.985, height * 0.96, depth), Vector3(0, 0, -depth * 0.5), frame, {"bevel": minf(width, height) * 0.08})]))
+	var q := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(width, height)
+	q.mesh = qm
+	q.material_override = _sign_material(tex, not backing)
+	q.position.z = 0.006
+	q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if not backing else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(q)
+	n.set_meta("size", Vector2(width, height))
+	return n
+
+
+static var _sign_mats := {}
+
+static func _sign_material(tex: Texture2D, two_sided: bool) -> StandardMaterial3D:
+	var key := [tex, two_sided]
+	if _sign_mats.has(key):
+		return _sign_mats[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = tex
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	m.roughness = 0.75
+	# A touch of self-light so the paint stays readable in shade.
+	m.emission_enabled = true
+	m.emission_texture = tex
+	m.emission = Color(1, 1, 1)
+	m.emission_energy_multiplier = 0.18
+	if two_sided:
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_sign_mats[key] = m
+	return m
+
+
+## A plaque on a little wooden post (for gardens and doorsteps).
+static func post_sign(art: String, width: float, post_h: float = 1.0) -> Node3D:
+	var n := Node3D.new()
+	var board := sign_board(art, width)
+	var sz: Vector2 = board.get_meta("size")
+	n.add_child(blocks([b(Vector3(0.14, post_h + sz.y * 0.5, 0.14), Vector3(0, (post_h + sz.y * 0.5) * 0.5, -0.12), Color(0.5, 0.33, 0.2), {"bevel": 0.03})]))
+	board.position = Vector3(0, post_h + sz.y * 0.5, 0)
+	n.add_child(board)
+	return n
+
+
+## A hanging room plaque that always turns to face the camera (yaw only).
+static func room_plaque(art: String, width: float = 1.5) -> Sprite3D:
+	var tex: Texture2D = load("res://assets/signs/%s.png" % art)
+	var s := Sprite3D.new()
+	s.texture = tex
+	s.pixel_size = width / float(tex.get_width())
+	s.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	s.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	s.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	s.shaded = false
+	return s
+
+
 ## A shop sign: coloured board with a big label.
 static func sign(text: String, bg: Color, fg: Color = Color(1, 1, 1), width: float = 4.0, height: float = 0.9) -> Node3D:
 	var n := Node3D.new()

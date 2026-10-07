@@ -7,6 +7,7 @@ extends Node3D
 
 const SIZE := 240.0                 # metres covered by the heightfield (square, centred at origin)
 const N := 481                      # vertices per side (0.5 m spacing)
+const CHUNK := 48                   # cells per mesh chunk side (24 m)
 const SPLAT_RECT := Rect2(-80.0, -72.0, 160.0, 118.0)   # x, z, width, depth (island bounds)
 const SPLAT_PX_PER_M := 2.0
 const SHADER := preload("res://shaders/terrain.gdshader")
@@ -196,36 +197,60 @@ func _build_mesh() -> void:
 			var hu := heights[mini(j + 1, N - 1) * N + i]
 			normals[k] = Vector3(hl - hr, 2.0 * step, hd - hu).normalized()
 			uvs[k] = Vector2(float(i) / (N - 1), float(j) / (N - 1))
-	var idx := PackedInt32Array()
-	idx.resize((N - 1) * (N - 1) * 6)
-	var p := 0
-	for j in N - 1:
-		for i in N - 1:
-			var a := j * N + i
-			var b := a + 1
-			var c := a + N
-			var d := c + 1
-			# Diagonal a–d, matching height_at().
-			idx[p] = a; idx[p + 1] = b; idx[p + 2] = d
-			idx[p + 3] = a; idx[p + 4] = d; idx[p + 5] = c
-			p += 6
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	arrays[Mesh.ARRAY_INDEX] = idx
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	material = ShaderMaterial.new()
 	material.shader = SHADER
 	material.set_shader_parameter("splat", splat_texture)
 	material.set_shader_parameter("splat_rect", Vector4(SPLAT_RECT.position.x, SPLAT_RECT.position.y, SPLAT_RECT.size.x, SPLAT_RECT.size.y))
-	mesh.surface_set_material(0, material)
-	var mi := MeshInstance3D.new()
-	mi.name = "Ground"
-	mi.mesh = mesh
-	add_child(mi)
+	# Chunks, so the camera and each shadow split only draw the bits they can see.
+	var ground := Node3D.new()
+	ground.name = "Ground"
+	add_child(ground)
+	var C := CHUNK
+	var cj := 0
+	while cj < N - 1:
+		var ci := 0
+		while ci < N - 1:
+			var w := mini(C, N - 1 - ci)
+			var h := mini(C, N - 1 - cj)
+			var cv := PackedVector3Array()
+			var cn := PackedVector3Array()
+			var cu := PackedVector2Array()
+			var top := -INF
+			for j in range(cj, cj + h + 1):
+				for i in range(ci, ci + w + 1):
+					var k := j * N + i
+					cv.append(verts[k])
+					cn.append(normals[k])
+					cu.append(uvs[k])
+					top = maxf(top, verts[k].y)
+			var idx := PackedInt32Array()
+			var row := w + 1
+			for j in h:
+				for i in w:
+					var a := j * row + i
+					var b := a + 1
+					var c := a + row
+					var d := c + 1
+					# Diagonal a–d, matching height_at().
+					idx.append_array([a, b, d, a, d, c])
+			var arrays := []
+			arrays.resize(Mesh.ARRAY_MAX)
+			arrays[Mesh.ARRAY_VERTEX] = cv
+			arrays[Mesh.ARRAY_NORMAL] = cn
+			arrays[Mesh.ARRAY_TEX_UV] = cu
+			arrays[Mesh.ARRAY_INDEX] = idx
+			var mesh := ArrayMesh.new()
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			mesh.surface_set_material(0, material)
+			var mi := MeshInstance3D.new()
+			mi.name = "Chunk_%d_%d" % [ci / C, cj / C]
+			mi.mesh = mesh
+			# Sea floor never needs to cast shadows.
+			if top < -0.5:
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			ground.add_child(mi)
+			ci += C
+		cj += C
 
 
 func _build_collider() -> void:

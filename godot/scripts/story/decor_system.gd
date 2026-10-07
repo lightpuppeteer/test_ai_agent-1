@@ -144,6 +144,30 @@ func _spawn_placed(entry: Dictionary) -> Node3D:
 	return n
 
 
+## The placed node for the first item of this kind (or null), and its info.
+func find_placed(item: String) -> Node3D:
+	for i in placed.size():
+		if placed[i]["item"] == item and i < _nodes.size() and is_instance_valid(_nodes[i]):
+			return _nodes[i]
+	return null
+
+
+## Top of a placed sofa / bed: where a cat would nap (global), or null.
+func nap_spot() -> Variant:
+	for item in ["sofa", "bed", "armchair"]:
+		var n := find_placed(item)
+		if n == null:
+			continue
+		var id: String = ITEMS[item]["model"]
+		var bb := Props.model_aabb(id)
+		var s := Props.kit_scale(id)
+		var seat_h := bb.size.y * s * (0.5 if item == "sofa" else 0.62 if item == "bed" else 0.5)
+		var fwd := 0.12 if item == "sofa" else 0.0
+		var side := bb.size.x * s * 0.22 if item == "sofa" else 0.0
+		return n.to_global(Vector3(side, seat_h, bb.size.z * s * fwd))
+	return null
+
+
 ## Restores saved furniture (called by the quest manager on load).
 func load_from(list: Array) -> void:
 	for n in _nodes:
@@ -156,6 +180,14 @@ func load_from(list: Array) -> void:
 			var entry := {"item": e["item"], "x": float(e["x"]), "z": float(e["z"]), "yaw": float(e["yaw"])}
 			placed.append(entry)
 			_nodes.append(_spawn_placed(entry))
+	_rebake_later()
+
+
+func _rebake_later() -> void:
+	if not is_inside_tree():
+		return
+	await get_tree().process_frame
+	_rebake_nav()
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +219,13 @@ func end() -> void:
 	if Game.quests:
 		Game.quests.flags["decor"] = placed
 		Game.quests.save_now()
+	_rebake_nav()
 	changed.emit()
+
+
+func _rebake_nav() -> void:
+	if is_inside_tree() and NavBaker.regions.has("house"):
+		NavBaker.rebake_interior(get_tree().current_scene as Node3D, "house")
 
 
 func _first_available(start: int, dir: int) -> int:

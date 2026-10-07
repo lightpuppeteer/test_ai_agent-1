@@ -33,6 +33,20 @@ const VIEWS := {
 	"carkiss": {"action": "_act_carkiss"},
 	"night": {"action": "_act_night"},
 	"cats": {"action": "_act_cats"},
+	"perf": {"action": "_act_perf"},
+	"tpbench": {"action": "_act_tpbench"},
+	"navdump": {"action": "_act_navdump"},
+	"spatest": {"action": "_act_spatest"},
+	"profile": {"action": "_act_profile"},
+	"sign_pizza": {"pos": Vector3(-26.5, 3.6, -12.5), "look": Vector3(-28, 3.2, -3)},
+	"sign_cinema": {"pos": Vector3(29.5, 3.4, -12.5), "look": Vector3(28, 2.8, -3)},
+	"sign_hotel": {"pos": Vector3(-42, 4.0, -13), "look": Vector3(-52, 3.6, -15)},
+	"sign_garden": {"pos": Vector3(44.5, 2.6, -13.5), "look": Vector3(51.3, 2.8, -15)},
+	"sign_house": {"pos": Vector3(32.5, 2.6, -13), "look": Vector3(30.4, 1.2, -17.5)},
+	"sign_her": {"pos": Vector3(-23.0, 2.2, -14.0), "look": Vector3(-24.5, 1.2, -18)},
+	"sign_oasis": {"action": "_act_sign_oasis"},
+	"yoggihouse": {"action": "_act_yoggihouse"},
+	"cwdrive": {"action": "_act_cwdrive"},
 }
 
 var cam: Camera3D
@@ -245,6 +259,236 @@ func _act_golden() -> void:
 	await _place(Vector3(6, 0, -48), PI * 0.95, PI * 0.95, -12.0, 9.0)
 
 
+func _perf_sample(label: String, frames: int = 90) -> void:
+	var worst := 0.0
+	var total := 0.0
+	for i in frames:
+		var t0 := Time.get_ticks_usec()
+		await get_tree().process_frame
+		var dt := (Time.get_ticks_usec() - t0) / 1000.0
+		worst = maxf(worst, dt)
+		total += dt
+	var rs := RenderingServer
+	log_line("[perf] %-14s avg %.1f ms  worst %.1f ms  draws %d  objs %d  prims %dk  fps %d" % [label, total / frames, worst,
+		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000,
+		Engine.get_frames_per_second()])
+
+
+## Frame-time numbers at a few spots, plus the hitch when walking into a room.
+func _act_perf() -> void:
+	var counts := {}
+	var big := []
+	for cs in get_tree().root.find_children("*", "CollisionShape3D", true, false):
+		var sh: Shape3D = (cs as CollisionShape3D).shape
+		var k := sh.get_class() if sh else "null"
+		counts[k] = counts.get(k, 0) + 1
+		if sh is ConcavePolygonShape3D:
+			big.append([(sh as ConcavePolygonShape3D).get_faces().size() / 3, str(cs.get_path())])
+		elif sh is HeightMapShape3D:
+			big.append([(sh as HeightMapShape3D).map_width * (sh as HeightMapShape3D).map_depth, str(cs.get_path())])
+	big.sort_custom(func(a, b): return a[0] > b[0])
+	log_line("[shapes] %s, %d bodies" % [counts, get_tree().root.find_children("*", "CollisionObject3D", true, false).size()])
+	for b in big.slice(0, 8):
+		log_line("[shapes]   %s" % [b])
+	for nm in str(Game.options.get("perf_off", "")).split(",", false):
+		for n in get_tree().root.find_children("*", "", true, false):
+			if n.name.begins_with(nm) or n.get_class() == nm or (n.get_script() and str(n.get_script().get_global_name()) == nm):
+				n.set_physics_process(false)
+				n.set_process(false)
+				print("[tt] off ", n.name)
+	await _place(Vector3(0, 0, -2), PI, PI, -28.0, 10.0)
+	await _perf_sample("plaza")
+	await _place(Vector3(-6, 0, 26), PI, PI, -28.0, 10.0)
+	await _perf_sample("beach")
+	await _place(Vector3(30, 0, -30), 0.0, 0.0, -28.0, 10.0)
+	await _perf_sample("east")
+	for room in ["pizza", "cinema", "house", "hotel"]:
+		var it: Interior = Places.interiors[room]
+		var worst := [0.0]
+		var on_frame := func() -> void: pass
+		var t_last := [Time.get_ticks_usec()]
+		var mon := func() -> void:
+			var now := Time.get_ticks_usec()
+			worst[0] = maxf(worst[0], (now - t_last[0]) / 1000.0)
+			if (now - t_last[0]) > 30000:
+				print("[tt] SLOW frame %.1f ms at %d  process %.1f physics %.1f" % [(now - t_last[0]) / 1000.0, Time.get_ticks_msec(), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0])
+			t_last[0] = now
+		get_tree().process_frame.connect(mon)
+		await Places.travel(it.global_position + it.spawn, 0.0, room)
+		await _frames(30)
+		get_tree().process_frame.disconnect(mon)
+		log_line("[perf] enter %-8s worst frame %.1f ms" % [room, worst[0]])
+		await _perf_sample("in " + room)
+		await Places.travel(QuestData.LANDMARKS["spawn"], PI, "outside")
+		await _frames(10)
+
+
+## Height profile + knee-height blockers along a few paths (pier, causeway ends).
+func _act_profile() -> void:
+	await _frames(5)
+	var space := get_viewport().get_world_3d().direct_space_state
+	var dir := (Places.CAUSEWAY_TO - Places.CAUSEWAY_FROM)
+	dir.y = 0.0
+	dir = dir.normalized()
+	var lines := {
+		"pier": [Vector3(34, 0, 21), Vector3(34, 0, 34)],
+		"cw_start": [Places.CAUSEWAY_FROM - dir * 9.0, Places.CAUSEWAY_FROM + dir * 6.0],
+		"cw_end": [Places.CAUSEWAY_TO - dir * 6.0, Places.CAUSEWAY_TO + dir * 10.0],
+	}
+	for nm in lines:
+		var a: Vector3 = lines[nm][0]
+		var b: Vector3 = lines[nm][1]
+		var steps := int(a.distance_to(b) / 0.25)
+		var out := PackedStringArray()
+		var prev_h := NAN
+		for i in steps + 1:
+			var p := a.lerp(b, float(i) / steps)
+			var q := PhysicsRayQueryParameters3D.create(Vector3(p.x, 30, p.z), Vector3(p.x, -10, p.z), Game.PHYS_WORLD | Game.PHYS_PROPS)
+			var hit := space.intersect_ray(q)
+			var h: float = hit["position"].y if not hit.is_empty() else -99.0
+			var who: String = str((hit["collider"] as Node).name) if not hit.is_empty() else "-"
+			if is_nan(prev_h) or absf(h - prev_h) > 0.12 or i == steps:
+				out.append("%.2f:%.2f(%s)" % [float(i) * 0.25, h, who])
+			prev_h = h
+		log_line("[profile] %s %s" % [nm, " ".join(out)])
+		# Blockers at knee height just above the walking surface.
+		var blk := PackedStringArray()
+		for i in steps:
+			var p0 := a.lerp(b, float(i) / steps)
+			var p1 := a.lerp(b, float(i + 1) / steps)
+			var q0 := PhysicsRayQueryParameters3D.create(Vector3(p0.x, 30, p0.z), Vector3(p0.x, -10, p0.z), Game.PHYS_WORLD | Game.PHYS_PROPS)
+			var hit0 := space.intersect_ray(q0)
+			if hit0.is_empty():
+				continue
+			var y: float = hit0["position"].y + 0.6
+			var q := PhysicsRayQueryParameters3D.create(Vector3(p0.x, y, p0.z), Vector3(p1.x, y, p1.z), Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_WALLS)
+			var hit := space.intersect_ray(q)
+			if not hit.is_empty():
+				blk.append("%.2f:%s" % [float(i) * 0.25, (hit["collider"] as Node).get_path()])
+		log_line("[profile] %s blockers: %s" % [nm, " ".join(blk)])
+
+
+func _act_sign_oasis() -> void:
+	var d := Places.CAUSEWAY_TO - Places.CAUSEWAY_FROM
+	d.y = 0
+	d = d.normalized()
+	var side := Vector3(d.z, 0, -d.x)
+	cam.current = true
+	cam.global_position = Places.CAUSEWAY_FROM - d * 9.0 + side * 2.0 + Vector3(0, 3.2, 0)
+	cam.look_at(Places.CAUSEWAY_FROM - d * 2.0 + Vector3(0, 1.5, 0) + side * -3.0)
+
+
+func _act_yoggihouse() -> void:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	var it := await _inside("house")
+	Game.world.decor.load_from([
+		{"item": "sofa", "x": -3.0, "z": 3.4, "yaw": PI}, {"item": "tv", "x": -3.0, "z": 0.0, "yaw": 0.0},
+		{"item": "rug", "x": -3.0, "z": 1.8, "yaw": 0.0}, {"item": "plant", "x": -7.0, "z": 5.0, "yaw": 0.0},
+		{"item": "lamp", "x": -6.5, "z": 1.0, "yaw": 0.0},
+	])
+	await get_tree().create_timer(0.5).timeout
+	var y: Yoggi = Places.spot("yoggi")
+	y.settle_home(it.to_global(Vector3(2.5, 0.1, 2.0)))
+	Game.player.teleport(it.global_position + Vector3(0.0, 0.1, 4.5), PI * 0.25)
+	Game.camera_rig.yaw = 0.3
+	Game.camera_rig.pitch = deg_to_rad(-38.0)
+	Game.camera_rig.distance = 8.0
+	for i in 12:
+		await get_tree().create_timer(0.5).timeout
+	log_line("[yoggi] mode=%s on_spot=%s at %s" % [y._mode, y._on_spot, y.global_position - it.global_position])
+	Game.camera_rig.cinematic(y.global_position + Vector3(0, 0.4, 0), 0.3, -25.0, 3.2)
+	await get_tree().create_timer(1.6).timeout
+
+
+func _act_cwdrive() -> void:
+	var car: Car = get_tree().current_scene.get_node("Car")
+	var d := Places.CAUSEWAY_TO - Places.CAUSEWAY_FROM
+	d.y = 0
+	d = d.normalized()
+	var start := Places.CAUSEWAY_FROM - d * 10.0
+	start.y = Game.terrain.height_at(start.x, start.z) + 0.8
+	car.global_transform = Transform3D(Basis(Vector3.UP, atan2(d.x, d.z)), start)
+	car.linear_velocity = Vector3.ZERO
+	await _frames(10)
+	await _place(start + Vector3(d.z, 0, -d.x) * 2.4, 0.0, 0.0, -18.0, 9.0)
+	await Game.player.enter_car(car)
+	Input.action_press("move_forward")
+	for i in 14:
+		await get_tree().create_timer(1.0).timeout
+		log_line("[drive] t=%d car at %s speed %.1f" % [i, car.global_position, car.speed_kmh()])
+	Input.action_release("move_forward")
+	log_line("[drive] distance to oasis end %.1f" % car.global_position.distance_to(Places.CAUSEWAY_TO))
+
+
+func _act_spatest() -> void:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	var it: Interior = Places.interiors["hotel"]
+	await Places.travel(it.global_position + it.spawn, 0.0, "hotel")
+	await _frames(20)
+	var bed: Interactable = Places.spot("spa_bed")
+	Game.player.teleport(bed.global_position + Vector3(0.5, 0.1, 0.8))
+	await _frames(5)
+	Game.player.use(bed)
+	for i in 10:
+		await get_tree().create_timer(1.0).timeout
+		log_line("[spa] t=%d her=%s %s  him=%s %s" % [i, Game.player.pose, Game.player.global_position - it.global_position, Game.partner.pose, Game.partner.global_position - it.global_position])
+	await Game.player.leave_anchor()
+	await _frames(30)
+	log_line("[spa] after get-up her=%s %s" % [Game.player.pose, Game.player.global_position - it.global_position])
+	Game.player.intent = Vector3(0, 0, 1)
+	await get_tree().create_timer(1.0).timeout
+	Game.player.intent = Vector3.ZERO
+	log_line("[spa] after walking her=%s %s" % [Game.player.pose, Game.player.global_position - it.global_position])
+
+
+func _act_navdump() -> void:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	var nm: NavigationMesh = NavBaker.regions["island"].navigation_mesh
+	var out := {"v": [], "p": []}
+	for v in nm.get_vertices():
+		out["v"].append([v.x, v.y, v.z])
+	for i in nm.get_polygon_count():
+		out["p"].append(Array(nm.get_polygon(i)))
+	var f := FileAccess.open(str(Game.options["shots"]).path_join("nav.json"), FileAccess.WRITE)
+	f.store_string(JSON.stringify(out))
+	f.close()
+
+
+func _act_tpbench() -> void:
+	var it: Interior = Places.interiors["pizza"]
+	var base := it.global_position + it.spawn
+	var mask := int(Game.options.get("pmask", "-1"))
+	if Game.options.has("noarea"):
+		(Game.partner as Partner).interactable.free()
+		print("[tt] removed partner area")
+	if mask >= 0:
+		Game.partner.collision_mask = mask
+		print("[tt] partner mask ", mask)
+	var only := str(Game.options.get("only", ""))
+	if only == "partner":
+		Game.story_lock = true
+	for k in 3:
+		print("[tt] -- in")
+		if only != "partner":
+			Game.player.teleport(base, 0.0)
+		if only != "player":
+			Game.partner.teleport(base + Vector3(1.2, 0, 0.6), 0.0)
+		for j in 6:
+			await get_tree().physics_frame
+		print("[tt] -- out")
+		if only != "partner":
+			Game.player.teleport(Vector3(2, 2.1, 13.4), 0.0)
+		if only != "player":
+			Game.partner.teleport(Vector3(3.2, 2.1, 14.0), 0.0)
+		for j in 6:
+			await get_tree().physics_frame
+
+
 func _act_cats() -> void:
 	var y: Node3D = Places.spot("yoggi") if Places.spot("yoggi") else null
 	if y == null:
@@ -329,6 +573,10 @@ func _act_cinema() -> void:
 	Game.camera_rig.pitch = deg_to_rad(-12.0)
 	Game.camera_rig.distance = 6.0
 	await _frames(60)
+	var img: Image = Game.world.cinema_screen._vp.get_texture().get_image()
+	if img:
+		img.save_png(str(Game.options["shots"]).path_join("cinema_vp.png"))
+		log_line("[cinema] viewport %s" % [img.get_size()])
 
 
 func _act_spa() -> void:

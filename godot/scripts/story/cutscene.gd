@@ -146,8 +146,8 @@ static func _kiss(her: Person, him: Person) -> void:
 		var dir := (him.global_position - her.global_position)
 		dir.y = 0.0
 		dir = dir.normalized() if dir.length() > 0.01 else Vector3.FORWARD
-		him.teleport(Vector3(mid.x, him.global_position.y, mid.z) + dir * 0.42)
-		her.teleport(Vector3(mid.x, her.global_position.y, mid.z) - dir * 0.42)
+		him.teleport_grounded(Vector3(mid.x, mid.y, mid.z) + dir * 0.42)
+		her.teleport_grounded(Vector3(mid.x, mid.y, mid.z) - dir * 0.42)
 		_face_each_other(her, him)
 	her.lean(1.0)
 	him.lean(1.0)
@@ -208,10 +208,20 @@ static func _clear_side(pivot: Vector3, yaw: float, pitch_deg: float, dist: floa
 
 static func _fireworks_loop(near: Node3D) -> void:
 	var tree := near.get_tree()
-	var colors := [Color(1, 0.4, 0.5), Color(1, 0.85, 0.3), Color(0.5, 0.8, 1), Color(0.7, 0.5, 1), Color(0.5, 1, 0.6), Color(1, 0.6, 0.3)]
+	var colors := [Color(1, 0.4, 0.55), Color(1, 0.85, 0.3), Color(0.45, 0.8, 1), Color(0.75, 0.5, 1), Color(0.5, 1, 0.6), Color(1, 0.6, 0.3)]
+	var kinds := ["peony", "peony", "ring", "willow", "glitter", "heart", "peony", "ring"]
+	var n := 0
 	while _fireworks_on:
+		n += 1
 		var base := near.global_position + Vector3(randf_range(-22, 22), 0, 0)
 		base.z += 30.0
 		base.y = 0.5
-		FX.firework(near.get_parent(), base, randf_range(9, 16), colors[randi() % colors.size()])
-		await tree.create_timer(randf_range(0.35, 0.9)).timeout
+		var kind: String = "letters" if n % 7 == 3 else kinds[randi() % kinds.size()]
+		var col: Color = Color(1, 0.45, 0.6) if kind == "letters" or kind == "heart" else colors[randi() % colors.size()]
+		if kind == "letters":
+			base.x = near.global_position.x
+		FX.firework(near.get_parent(), base, randf_range(11, 16) if kind != "letters" else 14.0, col, kind)
+		# Now and then a pair goes up together.
+		if randf() < 0.25 and kind != "letters":
+			FX.firework(near.get_parent(), base + Vector3(randf_range(-10, 10), 0, randf_range(-3, 3)), randf_range(9, 14), colors[randi() % colors.size()], "peony")
+		await tree.create_timer(randf_range(0.6, 1.3) if kind != "letters" else 2.6).timeout

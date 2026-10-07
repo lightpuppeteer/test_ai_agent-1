@@ -21,6 +21,10 @@ var _last_pos := Vector3.ZERO
 var _line := 0
 var _repath_side := 1.0
 var _goal: Variant = null
+var _path := PackedVector3Array()
+var _path_i := 0
+var _path_timer := 0.0
+var _path_goal := Vector3.INF
 
 
 func _ready() -> void:
@@ -71,14 +75,17 @@ func _think(delta: float) -> void:
 	want_run = false
 	var p: Person = Game.player
 	if p == null or pose != "move":
+		_path = PackedVector3Array()
 		return
 	if Game.story_lock and _goal == null:
 		return
 	if _goal != null:
-		var tg: Vector3 = _goal - global_position
+		var g: Vector3 = _goal
+		var tg := g - global_position
 		tg.y = 0.0
-		intent = tg.normalized()
+		intent = _steer(g, delta)
 		want_run = tg.length() > 4.0
+		_track_stuck(delta, true, p)
 		return
 	if p.pose == "drive":
 		return
@@ -90,36 +97,87 @@ func _think(delta: float) -> void:
 	to.y = 0.0
 	var d := to.length()
 	var far := (p.global_position - global_position).length()
-	if far > 40.0:
+	if far > 40.0 or absf(p.global_position.y - global_position.y) > 6.0:
 		_appear_near(p)
 		return
 	if d > 0.6 and far > follow_distance * 0.7:
-		intent = to / d * clampf(d / 2.0, 0.35, 1.0)
+		intent = _steer(goal, delta) * clampf(d / 2.0, 0.35, 1.0)
 		want_run = far > 7.0 or p.velocity.length() > p.walk_speed * 1.2
-		# Unstick: if barely moving while trying, sidestep or hop.
-		if global_position.distance_to(_last_pos) < 0.3 * delta * walk_speed:
-			_stuck_time += delta
-		else:
-			_stuck_time = maxf(_stuck_time - delta, 0.0)
-		if _stuck_time > 0.6:
-			intent = (intent + side * _repath_side).normalized()
-			if _stuck_time > 1.2 and is_on_floor():
-				want_jump = true
-				_repath_side = -_repath_side
-				_stuck_time = 0.0
+		_track_stuck(delta, true, p)
 	else:
-		_stuck_time = 0.0
+		_track_stuck(delta, false, p)
+		_path = PackedVector3Array()
 		# Idle: look at the player.
 		var tp := p.global_position - global_position
 		facing = lerp_angle(facing, atan2(-tp.x, -tp.z), clampf(delta * 3.0, 0.0, 1.0))
 	_last_pos = global_position
 
 
+## Direction to walk towards `goal`: along a navmesh path when there is one,
+## otherwise straight (and the stuck-rescue below takes care of the rest).
+func _steer(goal: Vector3, delta: float) -> Vector3:
+	_path_timer -= delta
+	if _path_timer <= 0.0 or goal.distance_to(_path_goal) > 1.2 or _path_i >= _path.size():
+		_path_timer = 0.5
+		_path_goal = goal
+		var to_goal := NavBaker.snap(get_world_3d(), goal)
+		# Goal off the walkable area (water, inside a prop): aim for the nearest walkable point.
+		_path = NavBaker.path(get_world_3d(), global_position, to_goal)
+		_path_i = 1 if _path.size() > 1 else 0
+	var target := goal
+	while _path_i < _path.size():
+		var wp := _path[_path_i]
+		var flat := Vector3(wp.x - global_position.x, 0, wp.z - global_position.z)
+		if flat.length() < 0.45 and _path_i < _path.size() - 1:
+			_path_i += 1
+			continue
+		target = wp
+		break
+	var dir := target - global_position
+	dir.y = 0.0
+	return dir.normalized() if dir.length() > 0.01 else Vector3.ZERO
+
+
+## If he's trying to walk but not getting anywhere: step sideways, hop, and as a
+## last resort pop up next to her (preferably while the camera looks elsewhere).
+func _track_stuck(delta: float, moving: bool, p: Person) -> void:
+	if not moving:
+		_stuck_time = 0.0
+		return
+	var moved := global_position.distance_to(_last_pos)
+	if moved < 0.25 * delta * walk_speed:
+		_stuck_time += delta
+	else:
+		_stuck_time = maxf(_stuck_time - delta * 0.5, 0.0)
+	if _stuck_time > 0.8 and _stuck_time < 1.6:
+		var side := Vector3(-intent.z, 0, intent.x)
+		intent = (intent + side * _repath_side * 0.8).normalized()
+		_path_timer = 0.0
+	elif _stuck_time >= 1.6 and _stuck_time < 1.7 and is_on_floor():
+		want_jump = true
+		_repath_side = -_repath_side
+	elif _stuck_time > 2.6:
+		_stuck_time = 0.0
+		var cam := get_viewport().get_camera_3d()
+		var seen := cam != null and cam.is_position_in_frustum(global_position + Vector3.UP)
+		if _goal != null:
+			pass     # walking to a seat: _walk_to's timeout hands over to enter_anchor
+		elif not seen or global_position.distance_to(p.global_position) > 5.0:
+			_appear_near(p)
+	_last_pos = global_position
+
+
 func _appear_near(p: Person) -> void:
 	var pos := p.global_position + p.global_transform.basis.z * 2.0 + p.global_transform.basis.x * 1.2
-	if Game.terrain:
+	var snapped_pos := NavBaker.snap(get_world_3d(), pos)
+	if snapped_pos.distance_to(pos) < 3.0:
+		pos = snapped_pos + Vector3(0, 0.15, 0)
+	elif Game.terrain and Game.location == "outside":
 		pos.y = maxf(Game.terrain.height_at(pos.x, pos.z), p.global_position.y) + 0.3
+	else:
+		pos = p.global_position + p.global_transform.basis.z * 1.2
 	teleport(pos, p.rotation.y)
+	_path = PackedVector3Array()
 
 
 ## Mirror the player: sit / lie next to them, hop in the car.
@@ -173,11 +231,22 @@ func _nearest_free_towel(p: Node3D) -> Interactable:
 func _walk_to(target: Vector3, timeout: float) -> void:
 	_goal = target
 	var t := 0.0
+	var best := INF
+	var since_best := 0.0
 	while t < timeout and pose == "move":
 		var to := target - global_position
 		to.y = 0.0
-		if to.length() < 0.9:
+		var d := to.length()
+		if d < 0.9:
 			break
+		# Can't get any closer (the seat is up on a bed, say)? Good enough.
+		if d < best - 0.05:
+			best = d
+			since_best = 0.0
+		else:
+			since_best += get_physics_process_delta_time()
+			if since_best > 0.7 and d < 3.5:
+				break
 		await get_tree().physics_frame
 		t += get_physics_process_delta_time()
 	_goal = null
