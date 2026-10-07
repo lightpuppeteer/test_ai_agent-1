@@ -1,3 +1,6 @@
+> **The game has moved to Godot.** The playable, cozy Animal Crossing–style version lives in [`godot/`](godot/README.md)
+> (Godot 4.7). The three.js prototype described below is kept for reference.
+
 # Shore Chapters: a Three.js + Rapier foundation
 
 A modular boilerplate for a chapter-based mini-game. The art direction is a stylised, atmospheric look inspired by

@@ -1,0 +1,77 @@
+# Our Little Island (Godot 4.7)
+
+A cozy, Animal Crossing–style island holding a year of memories. This replaces the three.js prototype (kept in
+the repo root for reference). Open this folder in **Godot 4.7** and press **F5**.
+
+## Controls
+
+| On foot | In the car |
+|---|---|
+| **WASD** walk (camera-relative), **Shift** run, **Space** jump | **W** throttle, **S** brake (hold at a standstill to reverse) |
+| **E** sit on a bench, lie on a towel, drive, talk, remember | **A/D** steer, **Space** handbrake, **E** get out (below ~9 km/h) |
+| **Drag** orbit the camera, **Wheel** zoom (trackpad pinch and scroll work too) | |
+| **O** change outfit, **T** time of day (day, golden hour, night) | **H** show or hide controls, **F12** photo, **F3** fps |
+
+Gamepads work too: left stick moves, right stick orbits, A jumps, X interacts, RB runs.
+
+## What's on the island
+
+- **Town square**: a fountain, benches, lamps, market stalls, a café corner and the town hall.
+- **Houses**: four houses with coloured roofs and little gardens.
+- **Promenade**: a paved walk along the coast with benches facing the sea and lamps that light up in the evening.
+- **Beach**: palms, towels in pairs, parasols, rocks and driftwood. A dock has a bench at the end, and boats, buoys,
+  barrels and crates bob on the waves.
+- **Lookout hill**: a plateau reached by a ramp, with a big oak, a bench, a picnic blanket and a fence along the cliff.
+- **Partner**: walks beside you, sits next to you, lies on the towel beside yours and rides along in the car.
+- **Villagers**: six animal neighbours (cat, dog, bunny, fox, penguin, koala) wander around and chat when you press E.
+- **Memory spots**: sparkles on the ground. Press E to read a memory; each chapter places its own.
+
+## Making chapters
+
+Chapters live in `scripts/chapters/`. Copy `shore_chapter.gd`, then set a title, a time of day (`day`, `golden` or
+`night`) and a spawn point, and call `add_memory(position, title, lines)` for each moment. Register the new script in
+`ChapterManager.CHAPTERS`. Villager lines are in `scripts/core/main.gd`, and the partner's lines are in
+`scripts/characters/partner.gd`.
+
+## Structure
+
+```
+scenes/main.tscn              boots everything from scripts/core/main.gd
+scripts/core/                 game.gd (autoload: input map, shared refs), main.gd, camera_rig.gd
+scripts/world/                terrain (heightfield + collider), ocean (waves, mirrored on the CPU), atmosphere
+                              (sky, sun, presets), island_builder (all prop placement), world_layout (the map in
+                              numbers), props (asset catalogue, recolouring, wind sway), buoyant_body, ambient_fx
+scripts/characters/           person.gd (movement, animation, sit/lie/drive poses), player.gd, partner.gd, villager.gd
+scripts/vehicles/car.gd       VehicleBody3D built from a Kenney car
+scripts/interaction/          interactable.gd (seats/anchors), memory_spot.gd
+scripts/chapters/             chapter base class, chapter manager, chapter 1
+scripts/ui/                   hud.gd (prompt bubble, dialogue box, toasts, title card), title_screen.gd
+shaders/                      terrain, ocean, sky, foliage sway, palette swap, stripes
+tools/                        dev scenes: contact sheets, pose sheet, lint, screenshot helpers
+assets/kenney/                Kenney kits (CC0, see each License.txt), assets/fonts (Fredoka + Nunito, OFL)
+```
+
+### How a few things work
+
+- **One map, many users.** `WorldLayout` defines the coast, beach width, road loop, plaza, paths and the hill. The
+  terrain heights, the painted ground (a splat texture), the prop placement and the flower scatter all read it, so
+  they always agree.
+- **Waves.** `Ocean.height_at()` evaluates the same sum of sines as `ocean.gdshader`, using the physics clock.
+  Floating props sample it, so they ride the visible waves. The shader reads the terrain height texture for shallow
+  colour and shoreline foam.
+- **Characters.** Kenney *Mini Characters* (player and partner) are scaled 1.6×. Sitting and driving use their own
+  animations. Lying down is the rest pose laid on its back. *Cube Pets* are the villagers.
+- **Recolouring.** Kenney's palette-textured models are recoloured on the GPU (`palette_swap.gdshader`), which is how
+  the houses get their roof colours. The nature kit's teal greens are warmed through `Props.NATURE_PALETTE` and
+  the sway shader.
+
+### Screenshots for visual checks
+
+Run with `-- --shots=/some/dir --views=start,plaza,sit,lie,drive,golden,night`, or put the same `key=value` lines
+in `res://shots_request.cfg`. That file is deleted after use. View names are listed in
+`scripts/tools/shot_director.gd`.
+
+## Credits
+
+3D assets: [Kenney](https://kenney.nl) (CC0), found through [3d.shep.bot](https://3d.shep.bot). Fonts: Fredoka and
+Nunito (SIL Open Font License).

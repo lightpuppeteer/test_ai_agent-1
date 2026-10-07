@@ -1,0 +1,214 @@
+class_name Car
+extends VehicleBody3D
+## A little drivable Kenney car built on VehicleBody3D. W/S throttle & brake
+## (hold S at a standstill to reverse), A/D steer, Space handbrake, E get out.
+
+@export var model_id := "car-kit/sedan"
+@export var max_engine_force := 2600.0
+@export var max_reverse_force := 1400.0
+@export var max_speed_kmh := 55.0
+@export var max_steer := 0.55
+@export var brake_force := 35.0
+
+var driver: Node = null
+var passenger: Node = null
+var interactable: Interactable
+var driver_seat: Node3D
+var passenger_seat: Node3D
+var _steer := 0.0
+var _rear_wheels: Array[VehicleWheel3D] = []
+var _scale := 1.25
+var _half_width := 0.9
+var lights: Array[Light3D] = []
+
+
+func _ready() -> void:
+	collision_layer = Game.PHYS_VEHICLES
+	# Characters are kinematic: if the car collided with them, anyone standing by a door would pin it.
+	collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_VEHICLES
+	mass = 800.0
+	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+	center_of_mass = Vector3(0, 0.35, 0)
+	_scale = Props.kit_scale(model_id)
+	_build()
+	can_sleep = true
+
+
+func _build() -> void:
+	var src := Props.model(model_id)
+	var body_mesh: MeshInstance3D = null
+	var wheel_nodes: Array[MeshInstance3D] = []
+	for c in src.get_children():
+		if c is MeshInstance3D:
+			if String(c.name).begins_with("wheel"):
+				wheel_nodes.append(c)
+			else:
+				body_mesh = c
+	var visual := Node3D.new()
+	visual.name = "Visual"
+	visual.scale = Vector3.ONE * _scale
+	add_child(visual)
+	if body_mesh:
+		body_mesh.owner = null
+		src.remove_child(body_mesh)
+		visual.add_child(body_mesh)
+		var bb := body_mesh.mesh.get_aabb()
+		bb.position += body_mesh.position
+		_half_width = bb.size.x * 0.5 * _scale
+		# Two boxes: chassis and cabin.
+		var low := CollisionShape3D.new()
+		var lb := BoxShape3D.new()
+		lb.size = Vector3(bb.size.x * 0.96, bb.size.y * 0.45, bb.size.z * 0.98) * _scale
+		low.shape = lb
+		low.position = Vector3(0, (bb.position.y + bb.size.y * 0.3) * _scale, bb.get_center().z * _scale)
+		add_child(low)
+		var top := CollisionShape3D.new()
+		var tb := BoxShape3D.new()
+		tb.size = Vector3(bb.size.x * 0.82, bb.size.y * 0.42, bb.size.z * 0.55) * _scale
+		top.shape = tb
+		top.position = Vector3(0, (bb.position.y + bb.size.y * 0.74) * _scale, (bb.get_center().z - bb.size.z * 0.05) * _scale)
+		add_child(top)
+	for w in wheel_nodes:
+		var vw := VehicleWheel3D.new()
+		vw.name = String(w.name).to_pascal_case()
+		vw.position = w.position * _scale
+		vw.wheel_radius = 0.3 * _scale
+		vw.wheel_rest_length = 0.12
+		vw.suspension_travel = 0.18
+		vw.suspension_stiffness = 48.0
+		vw.suspension_max_force = 9000.0
+		vw.damping_compression = 2.4
+		vw.damping_relaxation = 3.0
+		vw.wheel_friction_slip = 2.6
+		vw.wheel_roll_influence = 0.25
+		var front := w.position.z > 0.0
+		vw.use_as_steering = front
+		vw.use_as_traction = not front
+		if not front:
+			_rear_wheels.append(vw)
+		add_child(vw)
+		w.owner = null
+		src.remove_child(w)
+		w.position = Vector3.ZERO
+		w.scale = Vector3.ONE * _scale
+		vw.add_child(w)
+	src.free()
+	# Lift the wheel anchors so the tyres touch the ground at rest.
+	for c in get_children():
+		if c is VehicleWheel3D:
+			(c as VehicleWheel3D).position.y += 0.08
+	# Seats (character root goes here; character faces the seat's -Z = car forward).
+	driver_seat = Node3D.new()
+	driver_seat.name = "DriverSeat"
+	driver_seat.position = Vector3(0.28 * _scale, 0.22 * _scale, -0.12 * _scale)
+	driver_seat.rotation.y = PI
+	add_child(driver_seat)
+	passenger_seat = Node3D.new()
+	passenger_seat.name = "PassengerSeat"
+	passenger_seat.position = Vector3(-0.28 * _scale, 0.22 * _scale, -0.12 * _scale)
+	passenger_seat.rotation.y = PI
+	add_child(passenger_seat)
+	interactable = Interactable.new()
+	interactable.name = "DriveUse"
+	interactable.kind = "drive"
+	interactable.prompt = "Drive"
+	interactable.radius = 3.2
+	interactable.owner_node = self
+	interactable.position = Vector3(0, 0.5, 0)
+	add_child(interactable)
+	# Headlights for the evening.
+	for sx in [-0.45, 0.45]:
+		var sl := SpotLight3D.new()
+		sl.position = Vector3(sx * _scale, 0.5 * _scale, 1.25 * _scale)
+		sl.rotation.x = deg_to_rad(-8.0)
+		sl.rotation.y = PI
+		sl.spot_range = 22.0
+		sl.spot_angle = 32.0
+		sl.light_color = Color(1.0, 0.92, 0.78)
+		sl.light_energy = 0.0
+		sl.visible = false
+		add_child(sl)
+		lights.append(sl)
+
+
+func speed_kmh() -> float:
+	return linear_velocity.dot(global_transform.basis.z) * 3.6
+
+
+func can_exit() -> bool:
+	return absf(speed_kmh()) < 9.0
+
+
+func set_driver(d: Node) -> void:
+	driver = d
+	if d == null:
+		engine_force = 0.0
+		brake = 4.0
+		steering = 0.0
+	else:
+		sleeping = false
+		brake = 0.0
+
+
+func passenger_door() -> Vector3:
+	return global_position - global_transform.basis.x.normalized() * (_half_width + 0.7)
+
+
+## Free spot next to the driver's door (falls back to the other side / behind).
+func exit_point() -> Vector3:
+	var b := global_transform.basis
+	var candidates := [
+		global_position + b.x.normalized() * (_half_width + 0.9),
+		global_position - b.x.normalized() * (_half_width + 0.9),
+		global_position - b.z.normalized() * 3.0,
+	]
+	var space := get_world_3d().direct_space_state
+	for p in candidates:
+		var q := PhysicsShapeQueryParameters3D.new()
+		var sh := SphereShape3D.new()
+		sh.radius = 0.4
+		q.shape = sh
+		q.transform = Transform3D(Basis(), p + Vector3(0, 0.9, 0))
+		q.collision_mask = Game.PHYS_PROPS | Game.PHYS_VEHICLES
+		q.exclude = [get_rid()]
+		if space.intersect_shape(q, 1).is_empty():
+			return p
+	return candidates[0]
+
+
+func _physics_process(delta: float) -> void:
+	var lamp_on: bool = Game.atmosphere != null and Game.atmosphere.current != "day"
+	for l in lights:
+		l.visible = lamp_on and driver != null
+		l.light_energy = 2.5 if l.visible else 0.0
+	if driver == null:
+		return
+	var throttle := 0.0
+	var steer_in := 0.0
+	if not (Game.hud and Game.hud.is_dialogue_open()):
+		throttle = Input.get_action_strength("move_forward") - Input.get_action_strength("move_back")
+		steer_in = Input.get_action_strength("move_left") - Input.get_action_strength("move_right")
+	var spd := speed_kmh()
+	var handbrake := Input.is_action_pressed("handbrake")
+	engine_force = 0.0
+	brake = 0.0
+	if throttle > 0.05:
+		if spd < -1.0:
+			brake = brake_force * throttle
+		elif spd < max_speed_kmh:
+			engine_force = max_engine_force * throttle * (1.0 - 0.6 * clampf(spd / max_speed_kmh, 0.0, 1.0))
+	elif throttle < -0.05:
+		if spd > 1.0:
+			brake = brake_force * -throttle
+		elif spd > -18.0:
+			engine_force = -max_reverse_force * -throttle
+	else:
+		# Gentle engine braking.
+		brake = 1.2
+	for w in _rear_wheels:
+		w.brake = brake_force * 1.5 if handbrake else 0.0
+		w.wheel_friction_slip = 1.3 if handbrake else 2.6
+	# Steering eases off at speed.
+	var max_s := max_steer * lerpf(1.0, 0.35, clampf(absf(spd) / max_speed_kmh, 0.0, 1.0))
+	_steer = move_toward(_steer, steer_in * max_s, delta * 2.2)
+	steering = _steer
