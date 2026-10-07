@@ -113,6 +113,12 @@ func save_screenshot(path: String = "") -> String:
 		var dir := ProjectSettings.globalize_path(base).path_join("_shots")
 		DirAccess.make_dir_recursive_absolute(dir)
 		path = dir.path_join("shot_%s.png" % Time.get_datetime_string_from_system().replace(":", "-"))
+	# Keep the editor from importing screenshots saved inside the project.
+	var ignore := path.get_base_dir().path_join(".gdignore")
+	if not FileAccess.file_exists(ignore):
+		var f := FileAccess.open(ignore, FileAccess.WRITE)
+		if f:
+			f.close()
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
 	return path
