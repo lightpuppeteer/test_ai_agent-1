@@ -132,6 +132,22 @@ func _enter_tree() -> void:
 				options[l.substr(0, eq)] = l.substr(eq + 1)
 
 
+func _ready() -> void:
+	# The cozy toon look + rolling world (pass --flat for the plain renderer look).
+	Stylizer.enabled = not options.has("flat")
+	Stylizer.attach(get_tree())
+	if options.has("flat"):
+		RenderingServer.global_shader_parameter_set("curve_amount", 0.0)
+
+
+func _process(_delta: float) -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam:
+		RenderingServer.global_shader_parameter_set("curve_origin", cam.global_position)
+		var f := -cam.global_transform.basis.z
+		RenderingServer.global_shader_parameter_set("curve_dir", Vector3(f.x, 0.0, f.z))
+
+
 func _setup_input() -> void:
 	for action in BINDINGS:
 		if not InputMap.has_action(action):

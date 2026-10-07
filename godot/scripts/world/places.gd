@@ -74,6 +74,48 @@ func build(builder: IslandBuilder) -> void:
 	_volcano()
 	spots["ending"] = _marker(Vector3(0, 0, 24.0))
 	spots["beach_towels"] = _marker(Vector3(-9.9, 0, 29.0))
+	_bulletin_board()
+
+
+## The plaza notice board (Island News).
+func _bulletin_board() -> void:
+	var c := WorldLayout.PLAZA_CENTER
+	var a := deg_to_rad(135.0)
+	var p := c + Vector2(cos(a), sin(a)) * (WorldLayout.PLAZA_RADIUS - 1.3)
+	var n := Node3D.new()
+	n.name = "BulletinBoard"
+	add_child(n)
+	n.global_position = Vector3(p.x, B.ground(p.x, p.y), p.y)
+	var to := c - p
+	n.rotation.y = atan2(to.x, to.y)
+	var board := Props3D.sign_board("bulletin", 2.0, true, Color(0.45, 0.3, 0.18), 0.1)
+	board.position.y = 1.55
+	n.add_child(board)
+	for sx in [-0.85, 0.85]:
+		n.add_child(Props3D.blocks([Props3D.b(Vector3(0.12, 2.2, 0.12), Vector3(sx, 1.1, -0.1), Color(0.5, 0.33, 0.2), {"bevel": 0.03})]))
+	n.add_child(Props3D.blocks([Props3D.b(Vector3(2.3, 0.12, 0.3), Vector3(0, 2.32, -0.04), Color(0.62, 0.42, 0.26), {"bevel": 0.04})]))
+	var body := StaticBody3D.new()
+	body.collision_layer = Game.PHYS_PROPS
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(2.1, 2.3, 0.3)
+	cs.shape = bs
+	cs.position = Vector3(0, 1.15, -0.05)
+	body.add_child(cs)
+	n.add_child(body)
+	var it := Interactable.new()
+	it.kind = "talk"
+	it.prompt = "Read the notice board"
+	it.radius = 2.2
+	it.position = Vector3(0, 1.0, 0.6)
+	n.add_child(it)
+	it.used.connect(func(_by: Node, _s: Node3D) -> void:
+		if Game.hud:
+			Game.hud.say("Island News", ["LOST: one cat. Grey, round, judgy. Answers to Yoggi (he does not answer).",
+				"Pizza night on Friday at Amore. Emergency ham available on request.",
+				"Movie club this week: A Dog Named Sunday. Bring tissues.",
+				"T + M. One year of us, and counting."], Color(0.62, 0.42, 0.26), 1.0))
+	B.occupied.append(Vector3(p.x, p.y, 1.6))
 
 
 static var _mats := {}
@@ -531,7 +573,7 @@ func _picnic_garden() -> void:
 	# Flower beds and a shady tree.
 	B.soil_bed(c.x + 2.5, c.y - 3.0, 1.1, ["nature-kit/flower_redA", "nature-kit/flower_yellowA", "nature-kit/flower_purpleA"])
 	B.soil_bed(c.x + 2.5, c.y + 3.0, 1.1, ["nature-kit/flower_redB", "nature-kit/flower_yellowB", "nature-kit/flower_purpleB"])
-	B.put("nature-kit/tree_default", c.x + 3.6, c.y, 0.0, 1.6, "trunk", {"sway": 0.5, "sway_only": "leaf"})
+	B.tree(c.x + 3.6, c.y, "fruit", 2, "peach", 1.05)
 	# The blanket (two seats) and the basket.
 	var blanket := B.towel(c.x - 0.5, c.y, 90.0, [Color(0.95, 0.42, 0.42), Color(1, 0.97, 0.92)], true, Vector2(2.6, 2.6))
 	blanket.prompt = "Lie down on the blanket"

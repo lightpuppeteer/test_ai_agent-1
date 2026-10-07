@@ -447,7 +447,44 @@ def poster_drama():
     save(im, "poster_drama")
 
 
+def bulletin():
+    W, H = 760, 520
+    im, d = canvas(W, H)
+    im = soft_shadow(im, (10, 14, W - 10, H - 10), 30)
+    wood(im, (10, 10, W - 10, H - 14), rgb("a8703f"), r=30, plank_h=60, seed=21)
+    d = ImageDraw.Draw(im)
+    rrect(d, (40, 70, W - 40, H - 44), 12, rgb("d9b27c"))     # cork
+    rnd = random.Random(9)
+    for _ in range(900):
+        x, y = rnd.uniform(44, W - 44), rnd.uniform(74, H - 48)
+        d.point((S(x), S(y)), fill=(150, 105, 60, 120))
+    rrect(d, (W / 2 - 170, 14, W / 2 + 170, 62), 22, rgb("fff3df"), outline=rgb("7a4a28"), width=4)
+    text(d, (W / 2, 38), "Island News", font(34, 700), rgb("7a4a28"))
+    notes = [
+        ((70, 92, 330, 250), rgb("fff7c2"), -3, ["LOST: one cat.", "Grey, round, judgy.", "Answers to Yoggi", "(he does not answer)."]),
+        ((370, 96, 690, 252), rgb("d9f0ff"), 2, ["Pizza night!", "Friday at Amore.", "Emergency ham", "available on request."]),
+        ((84, 280, 330, 450), rgb("ffe0ea"), 2, ["Movie club", "This week: a dog", "named Sunday.", "Bring tissues."]),
+        ((372, 270, 690, 452), rgb("e7ffd9"), -2, ["T + M", "one year of us", "and counting", ""]),
+    ]
+    for box, col, rot, lines in notes:
+        nw, nh = int(box[2] - box[0]), int(box[3] - box[1])
+        note, nd = canvas(nw + 20, nh + 20)
+        rrect(nd, (10, 10, nw + 10, nh + 10), 6, col)
+        for i, ln in enumerate(lines):
+            f = font(30 if i == 0 else 24, 700 if i == 0 else 600, "Fredoka" if i == 0 else "Nunito")
+            text(nd, (nw / 2 + 10, 42 + i * 34), ln, f, rgb("4a3a30"))
+        note = note.rotate(rot, resample=Image.BICUBIC, expand=False)
+        im.alpha_composite(note, (S(box[0] - 10), S(box[1] - 10)))
+        d = ImageDraw.Draw(im)
+        pin = (box[0] + nw / 2, box[1] + 6)
+        d.ellipse([S(pin[0] - 9), S(pin[1] - 9), S(pin[0] + 9), S(pin[1] + 9)], fill=rgb("e2483d"))
+        d.ellipse([S(pin[0] - 4), S(pin[1] - 6), S(pin[0] + 1), S(pin[1] - 1)], fill=rgb("ffb3a8"))
+    heart(d, 600, 405, 22, rgb("ff6f91"))
+    save(im, "bulletin")
+
+
 if __name__ == "__main__":
+    bulletin()
     pizzeria(); cinema(); hotel(); oasis_arrow(); garden(); house_plaque(); her_plaque()
     menu_board(); popcorn_sign(); spa_plaque()
     room_plaque("living", "Living Room", rgb("8a4a2a"))

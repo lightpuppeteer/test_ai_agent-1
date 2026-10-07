@@ -128,6 +128,28 @@ static func _add_block(st: SurfaceTool, p: Dictionary) -> void:
 	var basis := Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z)))
 	var taper: Vector2 = p.get("taper", Vector2.ONE)   # x/z scale at the bottom (top stays 1)
 	var bone: int = BONES[p["bone"]]
+	if ROUNDED:
+		# Soft, rounded blocks with smooth normals (the cozy look).
+		var r := minf(maxf(c * 2.0, minf(h.x, minf(h.y, h.z)) * 0.62), minf(h.x, minf(h.y, h.z)) * 0.95)
+		var rb := _round_box(h, r)
+		var pos: PackedVector3Array = rb[0]
+		var nrm: PackedVector3Array = rb[1]
+		for i in pos.size():
+			var v: Vector3 = pos[i]
+			var u := (v.y + h.y) / size.y
+			var sx := lerpf(taper.x, 1.0, u)
+			var sz := lerpf(taper.y, 1.0, u)
+			v = Vector3(v.x * sx, v.y, v.z * sz)
+			var nn: Vector3 = nrm[i]
+			nn = (basis * Vector3(nn.x / maxf(sx, 0.01), nn.y, nn.z / maxf(sz, 0.01))).normalized()
+			var cc := col2.lerp(col, u)
+			cc = cc.darkened(shade * (1.0 - u))
+			st.set_color(cc)
+			st.set_normal(nn)
+			st.set_bones(PackedInt32Array([bone, 0, 0, 0]))
+			st.set_weights(PackedFloat32Array([1, 0, 0, 0]))
+			st.add_vertex(at + basis * v)
+		return
 	var tris := _bevel_box_tris(h, c)
 	for i in range(0, tris.size(), 3):
 		var vs: Array[Vector3] = []
@@ -152,6 +174,61 @@ static func _add_block(st: SurfaceTool, p: Dictionary) -> void:
 
 
 static var _box_cache := {}
+const ROUNDED := true
+static var _round_cache := {}
+
+## A rounded box (half extents h, corner radius r) as a triangle list with
+## smooth normals: [positions, normals]. Extra rows near the edges keep the
+## curves smooth while flat faces stay cheap.
+static func _round_box(h: Vector3, r: float) -> Array:
+	var key := [h, r]
+	if _round_cache.has(key):
+		return _round_cache[key]
+	var e := h - Vector3(r, r, r)
+	const M := 3
+	var coords := []
+	for axis in 3:
+		var cs: Array[float] = []
+		for k in M + 1:
+			cs.append(-h[axis] + (h[axis] - e[axis]) * float(k) / M)
+		for k in M + 1:
+			cs.append(e[axis] + (h[axis] - e[axis]) * float(k) / M)
+		coords.append(cs)
+	var pos := PackedVector3Array()
+	var nrm := PackedVector3Array()
+	for axis in 3:
+		var a := (axis + 1) % 3
+		var b := (axis + 2) % 3
+		for s: float in [-1.0, 1.0]:
+			var ca: Array[float] = coords[a]
+			var cb: Array[float] = coords[b]
+			for i in ca.size() - 1:
+				for j in cb.size() - 1:
+					var quad: Array[Vector3] = []
+					for q: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1)]:
+						var v := Vector3.ZERO
+						v[axis] = s * h[axis]
+						v[a] = ca[i + q.x]
+						v[b] = cb[j + q.y]
+						quad.append(v)
+					var pts: Array[Vector3] = []
+					var ns: Array[Vector3] = []
+					for v in quad:
+						var inner := Vector3(clampf(v.x, -e.x, e.x), clampf(v.y, -e.y, e.y), clampf(v.z, -e.z, e.z))
+						var d := v - inner
+						var n := d.normalized() if d.length() > 1e-6 else Vector3.ZERO
+						if n == Vector3.ZERO:
+							n[axis] = s
+						pts.append(inner + n * r)
+						ns.append(n)
+					# Godot front faces are clockwise seen from outside.
+					var face_n := (pts[1] - pts[0]).cross(pts[2] - pts[0])
+					var order := [0, 2, 1, 0, 3, 2] if face_n.dot(ns[0] + ns[2]) > 0.0 else [0, 1, 2, 0, 2, 3]
+					for k in order:
+						pos.append(pts[k])
+						nrm.append(ns[k])
+	_round_cache[key] = [pos, nrm]
+	return [pos, nrm]
 
 ## Triangles of a chamfered box (half extents h, bevel c), wound counter-clockwise seen from outside.
 static func _bevel_box_tris(h: Vector3, c: float) -> PackedVector3Array:
@@ -229,6 +306,16 @@ static func paint_face(f: Dictionary) -> ImageTexture:
 	img.fill(Color(0, 0, 0, 0))
 	var ink := Color(0.16, 0.11, 0.1)
 	var eye_y := 118.0
+	# Animal extras: a pale face mask (penguin), whiskers, a little cat mouth.
+	var mask: Color = f.get("mask", Color(0, 0, 0, 0))
+	if mask.a > 0.0:
+		_ellipse(img, Vector2(88, 128), 46.0, 58.0, mask)
+		_ellipse(img, Vector2(168, 128), 46.0, 58.0, mask)
+		_ellipse(img, Vector2(128, 170), 62.0, 40.0, mask)
+	if f.get("whiskers", false):
+		for sx: float in [-1.0, 1.0]:
+			for k in 3:
+				_line(img, Vector2(128.0 + sx * 46.0, 150.0 + k * 9.0), Vector2(128.0 + sx * 104.0, 140.0 + k * 14.0), 3.0, Color(0.35, 0.22, 0.18, 0.8))
 	var eye_dx := 50.0
 	var eyes: String = f.get("eyes", "round")
 	for sx: float in [-1.0, 1.0]:
@@ -250,6 +337,9 @@ static func paint_face(f: Dictionary) -> ImageTexture:
 	match f.get("mouth", "smile"):
 		"smile":
 			_arc(img, Vector2(128, 150), 15.0, PI * 0.15, PI * 0.85, 5.0, ink)
+		"cat":
+			_arc(img, Vector2(120, 156), 8.0, PI * 0.1, PI * 0.9, 4.0, ink)
+			_arc(img, Vector2(136, 156), 8.0, PI * 0.1, PI * 0.9, 4.0, ink)
 		"grin":
 			# Open happy mouth: a filled half-moon with a hint of teeth.
 			for y in range(150, 176):

@@ -2,6 +2,7 @@ shader_type spatial;
 // Recolours palette-textured models on the GPU: texels whose hue/saturation
 // match a source colour take the hue (and relative saturation/value) of a target.
 render_mode diffuse_burley, specular_schlick_ggx;
+#include "res://shaders/cozy_common.gdshaderinc"
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
 uniform vec3 uv_scale = vec3(1.0);
@@ -45,6 +46,7 @@ vec3 swapped(vec3 c, vec3 from, vec3 to) {
 
 void vertex() {
 	UV = UV * uv_scale.xy + uv_offset.xy;
+	VERTEX = curve_local(VERTEX, MODEL_MATRIX);
 }
 
 void fragment() {
@@ -58,4 +60,8 @@ void fragment() {
 	ALBEDO = c;
 	ROUGHNESS = roughness;
 	SPECULAR = 0.35;
+}
+
+void light() {
+	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, ROUGHNESS, DIFFUSE_LIGHT, SPECULAR_LIGHT);
 }

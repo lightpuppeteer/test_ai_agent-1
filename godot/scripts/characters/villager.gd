@@ -3,7 +3,9 @@ extends CharacterBody3D
 ## An animal neighbour (Kenney Cube Pets). Wanders around its home, nibbles,
 ## dances now and then, and chats when you press E.
 
-@export var species := "animal-cat"
+@export var species := "cat"
+@export var shirt := Color(0.5, 0.7, 0.95)
+@export var shirt2 := Color(1, 1, 1)
 ## Optional palette recolour {Color(from): Color(to)} for the model.
 var recolor := {}
 @export var display_name := "Mochi"
@@ -43,13 +45,12 @@ func _ready() -> void:
 	var visual := Node3D.new()
 	visual.rotation.y = PI          # model faces +Z; the body faces -Z
 	add_child(visual)
-	model = Props.model("cube-pets/" + species)
-	model.scale = Vector3.ONE * Props.kit_scale("cube-pets/" + species)
-	if not recolor.is_empty():
-		Props.recolor(model, recolor)
+	# A little bipedal animal on the shared character rig (see AnimalLooks).
+	model = Avatar.build(AnimalLooks.look(species, shirt, shirt2))
+	model.scale = Vector3.ONE * Game.CHARACTER_SCALE * 0.95
 	visual.add_child(model)
 	anim = model.find_child("AnimationPlayer", true, false)
-	for n in ["idle", "walk", "run", "eat", "dance"]:
+	for n in ["idle", "walk", "sit"]:
 		if anim.has_animation(n):
 			anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	interactable = Interactable.new()
@@ -84,9 +85,9 @@ func _enter(s: String) -> void:
 			_play("walk")
 		"eat", "dance":
 			_timer = _rng.randf_range(2.5, 4.0)
-			_play(s)
+			_play("interact-right" if s == "eat" else "emote-yes")
 		"talk":
-			_play("gesture-positive", 0.1)
+			_play("emote-yes", 0.1)
 
 
 func _physics_process(delta: float) -> void:
@@ -116,7 +117,7 @@ func _physics_process(delta: float) -> void:
 			if p:
 				var tp := p.global_position - global_position
 				_facing = lerp_angle(_facing, atan2(-tp.x, -tp.z), clampf(delta * 8.0, 0.0, 1.0))
-			if not anim.is_playing() or _anim_name != "gesture-positive":
+			if not anim.is_playing() or _anim_name != "emote-yes":
 				_play("idle")
 	velocity.x = v.x
 	velocity.z = v.z

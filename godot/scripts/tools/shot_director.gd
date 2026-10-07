@@ -33,11 +33,13 @@ const VIEWS := {
 	"carkiss": {"action": "_act_carkiss"},
 	"night": {"action": "_act_night"},
 	"cats": {"action": "_act_cats"},
+	"villagers": {"action": "_act_villagers"},
 	"perf": {"action": "_act_perf"},
 	"tpbench": {"action": "_act_tpbench"},
 	"navdump": {"action": "_act_navdump"},
 	"spatest": {"action": "_act_spatest"},
 	"profile": {"action": "_act_profile"},
+	"board": {"pos": Vector3(-2.0, 2.4, -6.8), "look": Vector3(-8.1, 1.7, -2.9)},
 	"sign_pizza": {"pos": Vector3(-26.5, 3.6, -12.5), "look": Vector3(-28, 3.2, -3)},
 	"sign_cinema": {"pos": Vector3(29.5, 3.4, -12.5), "look": Vector3(28, 2.8, -3)},
 	"sign_hotel": {"pos": Vector3(-42, 4.0, -13), "look": Vector3(-52, 3.6, -15)},
@@ -487,6 +489,26 @@ func _act_tpbench() -> void:
 			Game.partner.teleport(Vector3(3.2, 2.1, 14.0), 0.0)
 		for j in 6:
 			await get_tree().physics_frame
+
+
+func _act_villagers() -> void:
+	var vs := get_tree().get_nodes_in_group("villagers")
+	var i := 0
+	for v in vs:
+		var vn := v as Villager
+		vn.set_physics_process(false)
+		var x := -3.75 + i * 1.5
+		vn.global_position = Vector3(x, Game.terrain.height_at(x, 4.0) + 0.05, 4.0)
+		vn.rotation.y = PI
+		vn._facing = PI
+		vn._play("idle")
+		i += 1
+	Game.player.teleport(Vector3(6, 2.2, 2))
+	Game.partner.teleport(Vector3(7, 2.2, 2))
+	cam.current = true
+	cam.global_position = Vector3(0, 3.6, 9.6)
+	cam.look_at(Vector3(0, 2.6, 4.0))
+	await _frames(20)
 
 
 func _act_cats() -> void:

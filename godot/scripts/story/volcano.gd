@@ -7,7 +7,7 @@ var _smoke: GPUParticles3D
 var _lava: GPUParticles3D
 var _plume: GPUParticles3D
 var _glow: OmniLight3D
-var _crater_mat: StandardMaterial3D
+var _crater_mat: ShaderMaterial
 const HEIGHT := 46.0
 
 
@@ -33,11 +33,13 @@ func _ready() -> void:
 	cr.bottom_radius = 6.2
 	cr.height = 0.5
 	crater.mesh = cr
-	_crater_mat = StandardMaterial3D.new()
-	_crater_mat.albedo_color = Color(1.0, 0.4, 0.1)
-	_crater_mat.emission_enabled = true
-	_crater_mat.emission = Color(1.0, 0.35, 0.05)
-	_crater_mat.emission_energy_multiplier = 2.0
+	# Cozy material (so it follows the world curve like the cone); the glow is
+	# tweened on eruption through the emission_energy parameter.
+	_crater_mat = ShaderMaterial.new()
+	_crater_mat.shader = preload("res://shaders/cozy.gdshader")
+	_crater_mat.set_shader_parameter("albedo", Color(1.0, 0.4, 0.1))
+	_crater_mat.set_shader_parameter("emission", Color(1.0, 0.35, 0.05))
+	_crater_mat.set_shader_parameter("emission_energy", 2.0)
 	crater.material_override = _crater_mat
 	crater.position.y = HEIGHT - 0.5
 	add_child(crater)
@@ -119,7 +121,7 @@ func erupt(seconds: float = 9.0) -> void:
 	Game.rumble(0.8, 1.0, 1.5)
 	var tw := create_tween()
 	tw.tween_property(_glow, "light_energy", 14.0, 0.4)
-	tw.parallel().tween_property(_crater_mat, "emission_energy_multiplier", 6.0, 0.4)
+	tw.parallel().tween_property(_crater_mat, "shader_parameter/emission_energy", 6.0, 0.4)
 	if Game.camera_rig:
 		Game.camera_rig.shake(0.5, 1.6)
 	await get_tree().create_timer(seconds).timeout
@@ -127,4 +129,4 @@ func erupt(seconds: float = 9.0) -> void:
 	_plume.emitting = false
 	var tw2 := create_tween()
 	tw2.tween_property(_glow, "light_energy", 3.0, 3.0)
-	tw2.parallel().tween_property(_crater_mat, "emission_energy_multiplier", 2.0, 3.0)
+	tw2.parallel().tween_property(_crater_mat, "shader_parameter/emission_energy", 2.0, 3.0)

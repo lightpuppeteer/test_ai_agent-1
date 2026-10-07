@@ -3,6 +3,7 @@ shader_type spatial;
 // animated foam where the waves lap the beach, and sun glints.
 // The wave function is mirrored on the CPU by ocean.gd (buoyancy).
 render_mode blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx;
+#include "res://shaders/cozy_common.gdshaderinc"
 
 #include "res://shaders/noise.gdshaderinc"
 
@@ -47,6 +48,7 @@ void vertex() {
 	wave_h = wv.x;
 	NORMAL = normalize(vec3(-wv.y, 1.0, -wv.z));
 	wpos.y += wv.x;
+	VERTEX = curve_local(VERTEX, MODEL_MATRIX);
 }
 
 void fragment() {

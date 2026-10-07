@@ -1,6 +1,7 @@
 shader_type spatial;
 // Indoor floors: warm wooden planks, or checker tiles.
 render_mode diffuse_burley;
+#include "res://shaders/cozy_common.gdshaderinc"
 
 #include "res://shaders/noise.gdshaderinc"
 
@@ -10,6 +11,7 @@ varying vec3 wpos;
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	VERTEX = curve_local(VERTEX, MODEL_MATRIX);
 }
 
 void fragment() {
@@ -34,4 +36,8 @@ void fragment() {
 	ALBEDO = col;
 	ROUGHNESS = 0.6;
 	SPECULAR = 0.35;
+}
+
+void light() {
+	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, ROUGHNESS, DIFFUSE_LIGHT, SPECULAR_LIGHT);
 }

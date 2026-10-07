@@ -64,3 +64,18 @@ lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
 environment/ssao/quality=2
 textures/default_filters/anisotropic_filtering_level=3
+
+[shader_globals]
+
+curve_amount={
+"type": "float",
+"value": 0.0011
+}
+curve_origin={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+curve_dir={
+"type": "vec3",
+"value": Vector3(0, 0, -1)
+}

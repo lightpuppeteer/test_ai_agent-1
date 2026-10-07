@@ -460,7 +460,7 @@ func _dock() -> void:
 func _hill() -> void:
 	var lx := 4.0
 	var lz := -50.0
-	put("nature-kit/tree_oak", lx - 5.0, lz - 2.0, 30.0, 2.2, "trunk", {"sway": 0.6, "sway_only": "leaf"}, 3.0)
+	tree(lx - 5.0, lz - 2.0, "fruit", 1, "apple", 1.45)
 	bench(lx, lz + 3.0, 0.0)
 	var blanket := towel(lx + 4.5, lz + 1.5, 160.0, [Color(0.95, 0.42, 0.42), Color(1, 0.97, 0.92)], true, Vector2(2.4, 2.4))
 	blanket.prompt = "Lie down"
@@ -483,9 +483,18 @@ func _hill() -> void:
 # Trees and scatter
 # ---------------------------------------------------------------------------
 
+## A storybook tree (see TreeFactory) planted on the ground at x, z.
+func tree(x: float, z: float, kind: String = "round", variant: int = 0, fruit: String = "", mul: float = 1.0) -> Node3D:
+	var t := TreeFactory.make(kind, variant, fruit)
+	add_child(t)
+	t.position = Vector3(x, ground(x, z) - 0.05, z)
+	t.rotation.y = rng.randf() * TAU
+	t.scale = Vector3.ONE * mul
+	occupied.append(Vector3(x, z, 1.6 * mul))
+	return t
+
+
 func _trees() -> void:
-	var round_trees := ["nature-kit/tree_oak", "nature-kit/tree_default", "nature-kit/tree_fat", "nature-kit/tree_detailed", "fantasy-town-kit/tree-high-round"]
-	var pines := ["fantasy-town-kit/tree", "survival-kit/tree", "nature-kit/tree_cone"]
 	var placed := 0
 	var tries := 0
 	while placed < 85 and tries < 2500:
@@ -503,11 +512,9 @@ func _trees() -> void:
 		var edge_bias := smoothstep(-30.0, -10.0, sd)
 		if rng.randf() > 0.25 + edge_bias * 0.75:
 			continue
-		var id: String = pines[rng.randi() % pines.size()] if (z < -40.0 and rng.randf() < 0.5) else round_trees[rng.randi() % round_trees.size()]
-		var mul := rng.randf_range(0.9, 1.25)
-		if id.begins_with("nature-kit"):
-			mul *= 1.25
-		put(id, x, z, rng.randf() * 360.0, mul, "trunk", {"sway": 0.5, "sway_only": "leaf" if id.begins_with("nature-kit") else ""}, 1.6)
+		var kind := "cedar" if (z < -40.0 and rng.randf() < 0.55) else ("fruit" if rng.randf() < 0.22 else "round")
+		var fruits := ["orange", "apple", "peach", "pear", "cherry"]
+		tree(x, z, kind, rng.randi() % 4, fruits[rng.randi() % fruits.size()], rng.randf_range(0.85, 1.15))
 		placed += 1
 
 

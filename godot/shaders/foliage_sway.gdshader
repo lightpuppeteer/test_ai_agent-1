@@ -2,6 +2,7 @@ shader_type spatial;
 // Gentle wind sway for leaves, palms, flowers and grass tufts.
 // Displacement grows with height above the model base, so trunks stay planted.
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+#include "res://shaders/cozy_common.gdshaderinc"
 
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, hint_default_white;
@@ -46,6 +47,7 @@ void vertex() {
 	vec3 local_dir = normalize((inverse(MODEL_MATRIX) * vec4(dir.x, 0.0, dir.y, 0.0)).xyz);
 	VERTEX += local_dir * (sway + flutter) * strength * 0.04 * w * height;
 	VERTEX.y -= abs(sway) * strength * 0.01 * w * height;
+	VERTEX = curve_local(VERTEX, MODEL_MATRIX);
 }
 
 void fragment() {
@@ -65,4 +67,8 @@ void fragment() {
 	SPECULAR = 0.3;
 	// Fake subsurface: leaves glow a little when back-lit.
 	BACKLIGHT = c.rgb * translucency * v_weight;
+}
+
+void light() {
+	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, ROUGHNESS, DIFFUSE_LIGHT, SPECULAR_LIGHT);
 }

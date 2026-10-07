@@ -2,6 +2,7 @@ shader_type spatial;
 // Painted island ground: lush grass with soft patches, warm sand that darkens
 // near the water, dirt footpaths, stone paving, cobbled road and rocky cliffs.
 render_mode diffuse_burley, specular_schlick_ggx;
+#include "res://shaders/cozy_common.gdshaderinc"
 
 #include "res://shaders/noise.gdshaderinc"
 
@@ -25,6 +26,7 @@ varying vec3 wnrm;
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	VERTEX = curve_local(VERTEX, MODEL_MATRIX);
 }
 
 // Staggered tile pattern: returns (grout mask, per-tile random).
@@ -103,4 +105,8 @@ void fragment() {
 	float wet = sand_amt * (1.0 - smoothstep(0.05, 0.45, h));
 	ROUGHNESS = mix(0.92, 0.45, wet) - pave_amt * 0.1;
 	SPECULAR = 0.25 + wet * 0.25;
+}
+
+void light() {
+	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, ROUGHNESS, DIFFUSE_LIGHT, SPECULAR_LIGHT);
 }
