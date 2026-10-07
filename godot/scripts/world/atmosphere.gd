@@ -55,7 +55,7 @@ func _ready() -> void:
 	sky_mat.shader = SKY_SHADER
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
-	sky.radiance_size = Sky.RADIANCE_SIZE_128
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME
 
 	env = Environment.new()
@@ -99,11 +99,11 @@ func _ready() -> void:
 	_apply(_state)
 
 
-func set_preset(name: String, blend_time: float = 0.0) -> void:
-	if not PRESETS.has(name):
+func set_preset(preset_name: String, blend_time: float = 0.0) -> void:
+	if not PRESETS.has(preset_name):
 		return
-	current = name
-	var target: Dictionary = PRESETS[name]
+	current = preset_name
+	var target: Dictionary = PRESETS[preset_name]
 	if _tween:
 		_tween.kill()
 	if blend_time <= 0.0:

@@ -118,22 +118,22 @@ func next_look() -> void:
 	set_look(LOOKS[(i + 1) % LOOKS.size()])
 
 
-func _play(name: String, blend: float = 0.18, speed: float = 1.0) -> void:
+func _play(anim_name: String, blend: float = 0.18, speed: float = 1.0) -> void:
 	if anim == null:
 		return
 	anim.speed_scale = speed
-	if name == _anim_name:
+	if anim_name == _anim_name:
 		return
-	_anim_name = name
-	anim.play(name, blend)
+	_anim_name = anim_name
+	anim.play(anim_name, blend)
 
 
 ## One-shot gesture (e.g. "emote-yes"), then back to the current loop.
-func gesture(name: String) -> void:
-	if anim == null or not anim.has_animation(name) or pose != "move":
+func gesture(anim_name: String) -> void:
+	if anim == null or not anim.has_animation(anim_name) or pose != "move":
 		return
-	_anim_name = name
-	anim.play(name, 0.15)
+	_anim_name = anim_name
+	anim.play(anim_name, 0.15)
 	await anim.animation_finished
 	_anim_name = ""
 

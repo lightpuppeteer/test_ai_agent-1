@@ -84,14 +84,14 @@ func _setup_input() -> void:
 	_add_joy_button("run", JOY_BUTTON_RIGHT_SHOULDER)
 
 
-func _add_joy_axis(action: String, axis: int, value: float) -> void:
+func _add_joy_axis(action: String, axis: JoyAxis, value: float) -> void:
 	var ev := InputEventJoypadMotion.new()
 	ev.axis = axis
 	ev.axis_value = value
 	InputMap.action_add_event(action, ev)
 
 
-func _add_joy_button(action: String, button: int) -> void:
+func _add_joy_button(action: String, button: JoyButton) -> void:
 	var ev := InputEventJoypadButton.new()
 	ev.button_index = button
 	InputMap.action_add_event(action, ev)

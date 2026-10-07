@@ -38,7 +38,10 @@ static func create(parent: Node, id: String, pos: Vector3, mul: float = 1.0, yaw
 	b.mass = maxf(box.size.x * box.size.y * box.size.z * 1000.0 * 0.35 * b.float_height, 5.0)
 	b.collision_layer = Game.PHYS_PROPS
 	b.collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS | Game.PHYS_CHARACTERS | Game.PHYS_VEHICLES
-	b.angular_damp = 1.5
+	# Keep the weight low (ballast) so tall boats stay upright.
+	b.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+	b.center_of_mass = cs.position - Vector3(0, hull_h * 0.45, 0)
+	b.angular_damp = 2.5
 	b.linear_damp = 0.4
 	b.position = pos + Vector3(0, -hull_h * b.float_height - bb.position.y * s, 0)
 	b.rotation.y = deg_to_rad(yaw_deg)

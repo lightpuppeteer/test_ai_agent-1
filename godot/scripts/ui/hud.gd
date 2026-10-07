@@ -161,7 +161,10 @@ func _build_dialogue() -> void:
 	dlg_name_panel.anchor_top = 1.0
 	dlg_name_panel.anchor_bottom = 1.0
 	dlg_name_panel.offset_left = -400
-	dlg_name_panel.offset_top = -255
+	dlg_name_panel.offset_right = -300
+	dlg_name_panel.offset_top = -258
+	dlg_name_panel.offset_bottom = -214
+	dlg_name_panel.grow_horizontal = Control.GROW_DIRECTION_END
 	dlg_name_panel.rotation = deg_to_rad(-3.0)
 	dlg_name = _label("Name", 24, Color.WHITE, _title_font)
 	dlg_name_panel.add_child(dlg_name)

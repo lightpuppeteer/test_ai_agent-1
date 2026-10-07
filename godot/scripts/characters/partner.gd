@@ -16,7 +16,6 @@ var _stuck_time := 0.0
 var _last_pos := Vector3.ZERO
 var _line := 0
 var _repath_side := 1.0
-var _talk_cooldown := 0.0
 var _goal: Variant = null
 
 
