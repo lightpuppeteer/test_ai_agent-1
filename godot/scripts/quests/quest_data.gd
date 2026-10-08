@@ -171,7 +171,7 @@ const QUESTS := [
 			{"type": "dialogue", "tree": "ending"},
 		],
 		"finish_title": "One year",
-		"finish": ["Happy 1st anniversary, Tatiana. To more together. ♡", "The island is yours now: wander, play, and visit all our places whenever you like."],
+		"finish": ["Happy 1st anniversary, Tatiana. To more together. ♡", "The island is yours now: wander, beat Marco at the Island Arcade, and visit all our places whenever you like."],
 	},
 	# Side quest.
 	{

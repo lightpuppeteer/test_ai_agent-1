@@ -37,6 +37,10 @@ rumbles on bumps and big moments.
   (horror, comedy and drama on rotation, popcorn and drinks), our house (decorate it with the furniture inventory),
   the Hotel & Spa (an enormous bed inside; outside, a real swimming pool: wade in and you both swim, changing
   into swimwear and back automatically). Her place is the pink-roofed house where Yoggi lives.
+- **The Island Arcade** (the pink building north of the plaza): **Yoggi Run** (endless runner: jump the pots
+  and cucumbers, grab fish treats), **Pizza Rush** (top each pizza like its order ticket says: ↑ pepperoni,
+  ← mushroom, → olive, ↓ basil) and the **Claw Crane** (a little 3D claw machine; plushes you win go on a shelf
+  in the living room). High scores are saved, and Marco's are there to beat. Esc / ○ steps away from a cabinet.
 - **The picnic garden** east of town, the **road across the sea** to the oasis island, and the **volcano** behind it.
 - **Mini-map** (bottom left) with a heart for the current goal.
 

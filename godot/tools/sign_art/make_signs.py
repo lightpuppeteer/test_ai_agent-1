@@ -483,6 +483,62 @@ def bulletin():
     save(im, "bulletin")
 
 
+def arcade():
+    W, H = 1024, 320
+    im, d = canvas(W, H)
+    rrect(d, (6, 6, W - 6, H - 6), 46, rgb("1d1235"))
+    rrect(d, (24, 24, W - 24, H - 24), 34, rgb("2c1b52"), outline=rgb("ff5fa2"), width=6)
+    rrect(d, (40, 40, W - 40, H - 40), 26, None, outline=rgb("4fe3ff"), width=4)
+    bulbs_border(d, (56, 56, W - 56, H - 56), 36, 6, rgb("ffe58a"), off=rgb("b6577e"))
+    text(d, (W / 2, 128), "ISLAND ARCADE", font(92, 700), rgb("ffe066"), stroke=5, stroke_fill=rgb("ff3d8b"),
+         shadow=(0, 7, rgb("0b0616", 170)))
+    rrect(d, (W / 2 - 250, 200, W / 2 + 250, 258), 28, rgb("4fe3ff"))
+    text(d, (W / 2, 229), "GAMES · PRIZES · HIGH SCORES", font(30, 700), rgb("1d1235"))
+    for x, c in [(110, "ff5fa2"), (W - 110, "4fe3ff")]:
+        star(d, x, 128, 42, rgb(c))
+        star(d, x, 128, 18, rgb("ffffff"))
+    save(im, "arcade")
+
+
+def cabinet_marquee(name, title, bg, fg, accent, icon):
+    W, H = 768, 220
+    im, d = canvas(W, H)
+    rrect(d, (4, 4, W - 4, H - 4), 30, rgb(bg))
+    rrect(d, (18, 18, W - 18, H - 18), 22, None, outline=rgb(accent), width=6)
+    text(d, (W / 2 + 40, H / 2 + 4), title, font(84, 700), rgb(fg), stroke=5, stroke_fill=rgb(accent),
+         shadow=(0, 6, rgb("000000", 120)))
+    icon(d, 110, H / 2)
+    save(im, name)
+
+
+def _icon_cat(d, x, y):
+    d.ellipse([S(x - 52), S(y - 46), S(x + 52), S(y + 50)], fill=rgb("9aa1ad"))
+    d.polygon([(S(x - 46), S(y - 20)), (S(x - 40), S(y - 74)), (S(x - 8), S(y - 40))], fill=rgb("9aa1ad"))
+    d.polygon([(S(x + 46), S(y - 20)), (S(x + 40), S(y - 74)), (S(x + 8), S(y - 40))], fill=rgb("9aa1ad"))
+    for ex in (-20, 20):
+        d.ellipse([S(x + ex - 11), S(y - 12), S(x + ex + 11), S(y + 12)], fill=rgb("58c766"))
+        d.ellipse([S(x + ex - 4), S(y - 10), S(x + ex + 4), S(y + 10)], fill=rgb("1b1b1b"))
+    d.polygon([(S(x - 7), S(y + 18)), (S(x + 7), S(y + 18)), (S(x), S(y + 26))], fill=rgb("e88a9a"))
+
+
+def _icon_pizza(d, x, y):
+    pizza_slice(d, x, y, 96, rot=-15)
+
+
+def _icon_claw(d, x, y):
+    d.rectangle([S(x - 3), S(y - 80), S(x + 3), S(y - 20)], fill=rgb("cfd3dc"))
+    d.ellipse([S(x - 18), S(y - 30), S(x + 18), S(y - 4)], fill=rgb("f2c14e"))
+    for a in (-1, 0, 1):
+        d.line([(S(x + a * 10), S(y - 10)), (S(x + a * 34), S(y + 30)), (S(x + a * 20), S(y + 52))], fill=rgb("cfd3dc"), width=S(7))
+    heart(d, x, y + 40, 16, rgb("ff6f91"))
+
+
+def arcade_cabinets():
+    cabinet_marquee("cab_yoggi", "YOGGI RUN", "1e5b46", "eafff3", "5fe3a0", _icon_cat)
+    cabinet_marquee("cab_pizza", "PIZZA RUSH", "6e1f18", "fff3df", "ff7a5c", _icon_pizza)
+    cabinet_marquee("cab_claw", "CLAW CRANE", "33246b", "f3eeff", "ad94ff", _icon_claw)
+
+
 if __name__ == "__main__":
     bulletin()
     pizzeria(); cinema(); hotel(); oasis_arrow(); garden(); house_plaque(); her_plaque()
@@ -491,3 +547,4 @@ if __name__ == "__main__":
     room_plaque("bedroom", "Bedroom", rgb("6a4a9a"))
     room_plaque("office", "Office", rgb("2f6f78"))
     poster_horror(); poster_comedy(); poster_drama()
+    arcade(); arcade_cabinets()

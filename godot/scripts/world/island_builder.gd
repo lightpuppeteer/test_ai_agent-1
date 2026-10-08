@@ -288,8 +288,8 @@ func _town() -> void:
 		var tz: float = c.y + p.y
 		put("furniture-kit/tableRound", tx, tz, 0.0, 1.0, "cylinder", {"dy": 0.0}, 1.5)
 	# Town hall (north) and houses.
-	house(0.0, -26.0, 0.0, "t", Color(0.93, 0.42, 0.38), 1.5)
-	# The other four houses (pizza place, cinema, our house, her place) are built by Places.
+	# The old town hall north of the plaza is now the Island Arcade, and the other
+	# houses (pizza place, cinema, our house, her place) are built by Places too.
 	# Little front gardens.
 	for hx in [-28.0, 28.0]:
 		for hz in [-16.5, -4.5]:

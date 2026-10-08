@@ -56,6 +56,15 @@ const VIEWS := {
 	"poolswim": {"action": "_act_poolswim"},
 	"poolout": {"action": "_act_poolout"},
 	"meet": {"action": "_act_meet"},
+	"arcade": {"action": "_act_arcade"},
+	"arcade_title": {"action": "_act_arcade_title"},
+	"arcade_yoggi": {"action": "_act_arcade_yoggi"},
+	"arcade_pizza": {"action": "_act_arcade_pizza"},
+	"arcade_claw": {"action": "_act_arcade_claw"},
+	"arcade_over": {"action": "_act_arcade_over"},
+	"plushshelf": {"action": "_act_plushshelf"},
+	"arcade_back": {"action": "_act_arcade_back"},
+	"arcade_front": {"pos": Vector3(6.0, 4.0, -14.0), "look": Vector3(0, 3.0, -24)},
 }
 
 var cam: Camera3D
@@ -159,6 +168,9 @@ func _reset_story() -> void:
 
 
 func _reset() -> void:
+	if Arcade.current:
+		Arcade.current.close()
+		await _frames(2)
 	await _reset_story()
 	if _title:
 		_title.queue_free()
@@ -798,3 +810,157 @@ func _act_meet() -> void:
 	him.wait_at(NavBaker.snap(him.get_world_3d(), at2), Game.player.global_position)
 	him._pop_to_wait_spot()
 	await _frames(30)
+
+
+# ---------------------------------------------------------------------------
+# Arcade
+# ---------------------------------------------------------------------------
+
+func _enter_arcade() -> void:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	Game.quests.set_process(false)
+	var it: Interior = Places.interiors["arcade"]
+	await Places.travel(it.global_position + it.spawn, 0.0, "arcade")
+	await _frames(20)
+
+
+func _act_arcade() -> void:
+	await _enter_arcade()
+	var rig: CameraRig = Game.camera_rig
+	rig.yaw = 0.35
+	await _frames(30)
+
+
+func _open_game(id: String, autoplay: bool) -> Arcade:
+	await _enter_arcade()
+	if autoplay:
+		Game.options["arcade_autoplay"] = true
+	Arcade.open(id)
+	await _frames(5)
+	Game.options.erase("arcade_autoplay")
+	return Arcade.current
+
+
+func _act_arcade_title() -> void:
+	await _open_game("yoggi_run", false)
+	await _frames(30)
+
+
+## Little bots so the screenshots (and the headless test) show real play.
+func _bot_tap(action: String) -> void:
+	Input.action_press(action)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	Input.action_release(action)
+
+
+func _act_arcade_yoggi() -> void:
+	var a := await _open_game("yoggi_run", true)
+	var g = a.game
+	var t := 0.0
+	var secs := float(Game.options.get("botsecs", "7"))
+	while t < secs and g.running:
+		for o in g.obstacles:
+			var dx: float = o["x"] - g.YX
+			if g.on_ground and dx > 20.0 and dx < 60.0 + g.speed * 0.16:
+				_bot_tap("jump")
+				break
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	log_line("[arcade] yoggi t=%.1f running=%s score=%d treats=%d speed=%.0f" % [t, g.running, g.score, g.treat_count, g.speed])
+
+
+func _act_arcade_pizza() -> void:
+	var a := await _open_game("pizza_rush", true)
+	var g = a.game
+	var t := 0.0
+	var secs := float(Game.options.get("botsecs", "9"))
+	var keymap := {"pepperoni": "move_forward", "mushroom": "move_left", "olive": "move_right", "basil": "move_back"}
+	var cool := 0.0
+	while t < secs and g.running:
+		cool -= get_process_delta_time()
+		var p = g._active()
+		if p != null and cool <= 0.0 and p["x"] > g.ZONE.x + 40.0:
+			for top in p["order"]:
+				if not p["has"].has(top):
+					_bot_tap(keymap[top])
+					cool = 0.25
+					break
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	log_line("[arcade] pizza t=%.1f running=%s served=%d strikes=%d" % [t, g.running, g.served, g.strikes])
+
+
+func _act_arcade_claw() -> void:
+	var a := await _open_game("claw", true)
+	var g = a.game
+	# Aim at the nearest plush.
+	var best: Vector2 = Vector2.ZERO
+	var bd := INF
+	for p in g._prizes:
+		var n: Node3D = p["node"]
+		var d := Vector2(n.position.x, n.position.z).distance_to(g._claw_pos)
+		if d < bd:
+			bd = d
+			best = Vector2(n.position.x, n.position.z)
+	var t := 0.0
+	while t < 8.0 and g._claw_pos.distance_to(best) > 0.03:
+		var d: Vector2 = best - g._claw_pos
+		for act in ["move_left", "move_right", "move_forward", "move_back"]:
+			Input.action_release(act)
+		if absf(d.x) > 0.02:
+			Input.action_press("move_right" if d.x > 0 else "move_left")
+		if absf(d.y) > 0.02:
+			Input.action_press("move_back" if d.y > 0 else "move_forward")
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	for act in ["move_left", "move_right", "move_forward", "move_back"]:
+		Input.action_release(act)
+	log_line("[arcade] claw aimed at %s claw %s" % [best, g._claw_pos])
+	if Game.options.has("clawshot"):
+		await _frames(10)
+		return
+	_bot_tap("jump")
+	t = 0.0
+	while t < 14.0 and g.running:
+		await get_tree().process_frame
+		t += get_process_delta_time()
+		if g._phase == "up" and Game.options.has("clawup"):
+			await _frames(8)
+			return
+	log_line("[arcade] claw done running=%s won=%s plushes=%s" % [g.running, g._won_kind, Plushes.won()])
+
+
+func _act_arcade_over() -> void:
+	Game.options["botsecs"] = "2.5"
+	await _act_arcade_pizza()
+	var g = Arcade.current.game
+	g.strikes = 3
+	await _frames(70)
+
+
+func _act_plushshelf() -> void:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	Game.quests.set_process(false)
+	Game.quests.flags["plushes"] = ["yoggi", "pizza", "volcano", "heart", "bunny", "penguin"]
+	Plushes.refresh_house()
+	var it: Interior = Places.interiors["house"]
+	await Places.travel(it.global_position + it.spawn, 0.0, "house")
+	await _frames(10)
+	var shelf: Node3D = it.get_node("PlushShelf")
+	if cam:
+		cam.global_position = shelf.global_position + Vector3(2.6, 0.2, 0.3)
+		cam.look_at(shelf.global_position)
+		cam.current = true
+	await _frames(20)
+
+
+func _act_arcade_back() -> void:
+	await _enter_arcade()
+	var it: Interior = Places.interiors["arcade"]
+	cam.current = true
+	cam.global_position = it.global_position + Vector3(-1.0, 3.6, 3.2)
+	cam.look_at(it.global_position + Vector3(0.5, 1.2, -4.0))
+	await _frames(10)

@@ -385,6 +385,8 @@ func _on_photo() -> void:
 
 ## Restores persistent things (ring, decor, Yoggi at home) after loading.
 func _apply_flags() -> void:
+	Plushes.refresh_house()
+	Places.refresh_hiscores()
 	var her: Person = Game.player
 	if her and flags.get("ring", false):
 		her.set_accessory("ring", true)

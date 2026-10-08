@@ -68,6 +68,7 @@ func build(builder: IslandBuilder) -> void:
 	_our_house()
 	_her_place()
 	_hotel()
+	_arcade()
 	_picnic_garden()
 	_causeway()
 	_oasis()
@@ -464,6 +465,262 @@ func _her_place() -> void:
 	yoggi.global_position = p
 	spots["yoggi"] = yoggi
 	spots["her_place"] = _marker(Vector3(-28.0, 0, -17.5))
+
+
+# ---------------------------------------------------------------------------
+# Island Arcade (the old town hall)
+# ---------------------------------------------------------------------------
+
+const ARCADE_GAMES := [
+	["yoggi_run", "cab_yoggi", "Play Yoggi Run", Vector3(-4.6, 0, -4.55), Color(0.24, 0.62, 0.46), Color(0.55, 1.0, 0.75)],
+	["pizza_rush", "cab_pizza", "Play Pizza Rush", Vector3(-2.2, 0, -4.55), Color(0.78, 0.3, 0.24), Color(1.0, 0.72, 0.5)],
+]
+
+func _arcade() -> void:
+	var room := _interior("arcade", "Island Arcade", 4, Vector3(14, 3.8, 11), Color(0.42, 0.32, 0.62), Color(0.36, 0.3, 0.52), true)
+	var info := _building(0.0, -26.0, 0.0, "t", Color(0.98, 0.42, 0.65), 1.5, room, "Enter the Island Arcade")
+	var sign := Props3D.sign_board("arcade", 5.0, true, Color(0.16, 0.1, 0.3))
+	add_child(sign)
+	sign.global_position = info["front"] + Vector3(0, B.ground(0, -22) + 3.7, 0) + info["fwd"] * 0.3
+	spots["arcade_door"] = info["door"]
+	spots["arcade_meet"] = _marker(info["meet"])
+	# --- inside: neon, cabinets, the claw machine, the high-score board.
+	var hw := room.size.x * 0.5
+	var hd := room.size.z * 0.5
+	var neon := []
+	for i in 14:
+		var c := Color(1.0, 0.38, 0.65) if i % 2 == 0 else Color(0.3, 0.9, 1.0)
+		neon.append(Props3D.b(Vector3(1.0, 0.07, 0.07), Vector3(-hw + 0.5 + i * 1.0, 3.45, -hd + 0.06), c, {"mat": "glow", "shade": 0.0}))
+	for i in 11:
+		var c := Color(0.3, 0.9, 1.0) if i % 2 == 0 else Color(1.0, 0.38, 0.65)
+		neon.append(Props3D.b(Vector3(0.07, 0.07, 1.0), Vector3(-hw + 0.06, 3.45, -hd + 0.5 + i * 1.0), c, {"mat": "glow", "shade": 0.0}))
+		neon.append(Props3D.b(Vector3(0.07, 0.07, 1.0), Vector3(hw - 0.06, 3.45, -hd + 0.5 + i * 1.0), c, {"mat": "glow", "shade": 0.0}))
+	# A starry rug in the middle.
+	neon.append(Props3D.b(Vector3(6.0, 0.02, 3.6), Vector3(0, 0.01, 0.6), Color(0.35, 0.22, 0.55), {"bevel": 0.01, "shade": 0.0}))
+	for i in 9:
+		var sp := Vector3(-2.6 + (i % 5) * 1.3, 0.025, -0.6 + (i / 5) * 1.6 + (0.6 if i % 2 else 0.0))
+		neon.append(Props3D.b(Vector3(0.22, 0.01, 0.22), sp, Color(1.0, 0.85, 0.4), {"rot": Vector3(0, 45, 0), "shade": 0.0, "bevel": 0.005}))
+	room.add_child(Props3D.blocks(neon))
+	var wall_sign := Props3D.sign_board("arcade", 3.6, true, Color(0.16, 0.1, 0.3))
+	room.add_child(wall_sign)
+	wall_sign.position = Vector3(1.6, 2.65, -hd + 0.1)
+	for l in [[Vector3(-4.0, 2.8, -2.0), Color(1.0, 0.45, 0.7)], [Vector3(3.5, 2.8, -2.0), Color(0.4, 0.85, 1.0)], [Vector3(0, 2.8, 2.5), Color(0.75, 0.6, 1.0)]]:
+		var o := OmniLight3D.new()
+		o.position = l[0]
+		o.light_color = l[1]
+		o.light_energy = 2.0
+		o.omni_range = 7.5
+		room.add_child(o)
+	for g in ARCADE_GAMES:
+		_arcade_cabinet(room, g[0], g[1], g[2], g[3], g[4], g[5])
+	_claw_cabinet(room, Vector3(4.6, 0, -4.35))
+	_hiscore_board(room, Vector3(hw - 0.08, 1.7, -0.6))
+	_air_hockey(room, Vector3(-3.6, 0, 1.4))
+	# Arcade music while you're inside.
+	Game.location_changed.connect(func(loc: String) -> void:
+		if loc == "arcade":
+			Sound.override_music("arcade")
+			refresh_hiscores()
+		elif Sound._music_override == "arcade":
+			Sound.override_music(""))
+
+
+func _arcade_cabinet(room: Interior, game: String, art: String, prompt: String, at: Vector3, body: Color, screen: Color) -> void:
+	var n := Node3D.new()
+	n.name = "Cabinet_" + game
+	room.add_child(n)
+	n.position = at
+	var dark := body.darkened(0.35)
+	n.add_child(Props3D.blocks([
+		Props3D.b(Vector3(1.05, 1.8, 0.8), Vector3(0, 0.9, 0), body, {"bevel": 0.05}),
+		Props3D.b(Vector3(1.12, 1.9, 0.86), Vector3(0, 0.95, -0.04), dark, {"bevel": 0.05}),
+		Props3D.b(Vector3(0.84, 0.66, 0.06), Vector3(0, 1.36, 0.4), Color(0.05, 0.05, 0.08), {"bevel": 0.03, "rot": Vector3(-10, 0, 0)}),
+		Props3D.b(Vector3(0.72, 0.54, 0.02), Vector3(0, 1.36, 0.435), screen, {"mat": "glow", "shade": 0.0, "rot": Vector3(-10, 0, 0)}),
+		Props3D.b(Vector3(1.05, 0.12, 0.42), Vector3(0, 0.98, 0.52), dark, {"bevel": 0.04, "rot": Vector3(18, 0, 0)}),
+		Props3D.b(Vector3(0.05, 0.14, 0.05), Vector3(-0.22, 1.1, 0.55), Color(0.15, 0.15, 0.18), {}),
+		Props3D.b(Vector3(0.1, 0.1, 0.1), Vector3(-0.22, 1.18, 0.55), Color(0.95, 0.25, 0.3), {"mat": "glossy", "bevel": 0.045}),
+		Props3D.b(Vector3(0.08, 0.04, 0.08), Vector3(0.12, 1.07, 0.56), Color(1.0, 0.85, 0.3), {"mat": "glow", "bevel": 0.03, "shade": 0.0}),
+		Props3D.b(Vector3(0.08, 0.04, 0.08), Vector3(0.28, 1.07, 0.52), Color(0.4, 0.85, 1.0), {"mat": "glow", "bevel": 0.03, "shade": 0.0}),
+	]))
+	var mq := Props3D.sign_board(art, 1.0, false)
+	n.add_child(mq)
+	mq.position = Vector3(0, 1.98, 0.44)
+	var glow := OmniLight3D.new()
+	glow.light_color = screen
+	glow.light_energy = 0.8
+	glow.omni_range = 2.2
+	glow.position = Vector3(0, 1.3, 0.9)
+	n.add_child(glow)
+	var body_col := StaticBody3D.new()
+	body_col.collision_layer = Game.PHYS_PROPS
+	n.add_child(body_col)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(1.1, 2.0, 0.95)
+	cs.shape = bs
+	cs.position = Vector3(0, 1.0, 0.05)
+	body_col.add_child(cs)
+	var it := _use_point(room, at + Vector3(0, 0, 1.1), prompt, "arcade_" + game, 1.5)
+	it.used.connect(func(_by: Node, _s: Node3D) -> void: Arcade.open(game))
+
+
+func _claw_cabinet(room: Interior, at: Vector3) -> void:
+	var n := Node3D.new()
+	n.name = "ClawMachine"
+	room.add_child(n)
+	n.position = at
+	var purple := Color(0.52, 0.42, 0.9)
+	n.add_child(Props3D.blocks([
+		Props3D.b(Vector3(1.3, 0.95, 1.1), Vector3(0, 0.475, 0), purple, {"bevel": 0.06}),
+		Props3D.b(Vector3(1.36, 0.08, 1.16), Vector3(0, 0.96, 0), Color(1.0, 0.85, 0.4), {"mat": "gold", "bevel": 0.03}),
+		Props3D.b(Vector3(1.36, 0.36, 1.16), Vector3(0, 2.16, 0), purple.darkened(0.2), {"bevel": 0.06}),
+		Props3D.b(Vector3(0.36, 0.3, 0.06), Vector3(-0.3, 0.55, 0.56), Color(0.15, 0.1, 0.2), {"bevel": 0.03}),
+		Props3D.b(Vector3(0.05, 0.14, 0.05), Vector3(0.3, 1.05, 0.48), Color(0.15, 0.15, 0.18), {}),
+		Props3D.b(Vector3(0.1, 0.1, 0.1), Vector3(0.3, 1.13, 0.48), Color(1.0, 0.4, 0.7), {"mat": "glossy", "bevel": 0.045}),
+	] + _glass_frame()))
+	# Glass box with a pile of plushes inside.
+	var glass := MeshInstance3D.new()
+	var gm := BoxMesh.new()
+	gm.size = Vector3(1.26, 1.0, 1.06)
+	glass.mesh = gm
+	var gmat := StandardMaterial3D.new()
+	gmat.albedo_color = Color(0.8, 0.9, 1.0, 0.18)
+	gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gmat.roughness = 0.05
+	glass.material_override = gmat
+	glass.position = Vector3(0, 1.48, 0)
+	n.add_child(glass)
+	var kinds: Array = Plushes.KINDS.duplicate()
+	for i in 8:
+		var p := Plushes.build(kinds[i % kinds.size()])
+		p.scale = Vector3.ONE * 0.48
+		p.position = Vector3(-0.38 + (i % 4) * 0.26, 1.0 + (i / 4) * 0.12, -0.25 + (i / 4) * 0.3)
+		p.rotation = Vector3(0.1 * (i % 3), (i * 1.3) - 2.0, 0.08 * ((i + 1) % 3))
+		n.add_child(p)
+	n.add_child(Props3D.blocks([
+		Props3D.b(Vector3(0.02, 0.4, 0.02), Vector3(0.15, 1.75, 0.05), Color(0.4, 0.4, 0.45), {}),
+		Props3D.b(Vector3(0.12, 0.06, 0.12), Vector3(0.15, 1.53, 0.05), Color(0.95, 0.85, 0.35), {"mat": "gold", "bevel": 0.03}),
+	]))
+	var mq := Props3D.sign_board("cab_claw", 1.2, false)
+	n.add_child(mq)
+	mq.position = Vector3(0, 2.16, 0.59)
+	var lamp := OmniLight3D.new()
+	lamp.light_color = Color(0.9, 0.8, 1.0)
+	lamp.light_energy = 0.9
+	lamp.omni_range = 2.0
+	lamp.position = Vector3(0, 1.8, 0.2)
+	n.add_child(lamp)
+	var body_col := StaticBody3D.new()
+	body_col.collision_layer = Game.PHYS_PROPS
+	n.add_child(body_col)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(1.36, 2.4, 1.16)
+	cs.shape = bs
+	cs.position = Vector3(0, 1.2, 0)
+	body_col.add_child(cs)
+	var it := _use_point(room, at + Vector3(0, 0, 1.3), "Play the claw machine", "arcade_claw", 1.6)
+	it.used.connect(func(_by: Node, _s: Node3D) -> void: Arcade.open("claw"))
+
+
+func _glass_frame() -> Array:
+	var out := []
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			out.append(Props3D.b(Vector3(0.05, 1.0, 0.05), Vector3(sx * 0.64, 1.48, sz * 0.54), Color(0.95, 0.95, 1.0), {"mat": "glossy"}))
+	return out
+
+
+static var _hiscore_label: Label3D
+
+func _hiscore_board(room: Interior, at: Vector3) -> void:
+	var n := Node3D.new()
+	n.name = "HiScores"
+	room.add_child(n)
+	n.position = at
+	n.rotation.y = -PI * 0.5      # on the right wall, facing into the room
+	n.add_child(Props3D.blocks([
+		Props3D.b(Vector3(3.2, 2.2, 0.08), Vector3(0, 0, 0), Color(0.08, 0.06, 0.14), {"bevel": 0.04}),
+		Props3D.b(Vector3(3.3, 0.06, 0.1), Vector3(0, 1.1, 0.02), Color(1.0, 0.38, 0.65), {"mat": "glow", "shade": 0.0}),
+		Props3D.b(Vector3(3.3, 0.06, 0.1), Vector3(0, -1.1, 0.02), Color(0.3, 0.9, 1.0), {"mat": "glow", "shade": 0.0}),
+	]))
+	_hiscore_label = Label3D.new()
+	_hiscore_label.font = load("res://assets/fonts/Fredoka.ttf")
+	_hiscore_label.font_size = 64
+	_hiscore_label.pixel_size = 0.0042
+	_hiscore_label.position = Vector3(0, 0, 0.06)
+	_hiscore_label.modulate = Color(1.0, 0.93, 0.6)
+	_hiscore_label.outline_size = 0
+	_hiscore_label.line_spacing = -6
+	_hiscore_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	n.add_child(_hiscore_label)
+	refresh_hiscores()
+
+
+static func refresh_hiscores() -> void:
+	if _hiscore_label == null or not is_instance_valid(_hiscore_label):
+		return
+	var lines := ["★ HIGH SCORES ★", ""]
+	for id in ["yoggi_run", "pizza_rush", "claw"]:
+		var g: Dictionary = Arcade.GAMES[id]
+		var t := Arcade.best(id)
+		var m := int(g["marco"])
+		lines.append(str(g["title"]))
+		if id == "claw":
+			lines.append("Tatiana %d   ·   Marco %d" % [t, m])
+		else:
+			lines.append(("♛ " if t > m else "") + "Tatiana %d   ·   Marco %d" % [t, m] + (" ♛" if m >= t else ""))
+		lines.append("")
+	_hiscore_label.text = "\n".join(lines).strip_edges()
+
+
+func _air_hockey(room: Interior, at: Vector3) -> void:
+	var n := Node3D.new()
+	n.name = "AirHockey"
+	room.add_child(n)
+	n.position = at
+	n.add_child(Props3D.blocks([
+		Props3D.b(Vector3(1.4, 0.75, 2.4), Vector3(0, 0.375, 0), Color(0.2, 0.45, 0.85), {"bevel": 0.05}),
+		Props3D.b(Vector3(1.3, 0.04, 2.3), Vector3(0, 0.77, 0), Color(0.95, 0.97, 1.0), {"bevel": 0.01, "shade": 0.0}),
+		Props3D.b(Vector3(1.3, 0.045, 0.03), Vector3(0, 0.775, 0), Color(0.95, 0.3, 0.4), {"shade": 0.0}),
+		Props3D.b(Vector3(0.14, 0.03, 0.14), Vector3(0.2, 0.8, 0.5), Color(0.15, 0.15, 0.2), {"bevel": 0.012}),
+		Props3D.b(Vector3(0.12, 0.08, 0.12), Vector3(-0.3, 0.82, -0.8), Color(1.0, 0.4, 0.4), {"mat": "glossy", "bevel": 0.05}),
+	]))
+	var note := Label3D.new()
+	note.text = "OUT OF ORDER\n(Marco)"
+	note.font = load("res://assets/fonts/Fredoka.ttf")
+	note.font_size = 48
+	note.pixel_size = 0.004
+	note.modulate = Color(0.95, 0.3, 0.35)
+	note.outline_size = 10
+	note.outline_modulate = Color(1, 1, 1)
+	note.position = Vector3(0, 0.82, 0.3)
+	note.rotation.x = -PI * 0.5
+	n.add_child(note)
+	_box_col(room, at + Vector3(0, 0.4, 0), Vector3(1.4, 0.8, 2.4))
+	var it := Interactable.new()
+	it.kind = "talk"
+	it.prompt = "Look at the air hockey table"
+	it.radius = 1.8
+	room.add_child(it)
+	it.position = at + Vector3(0.9, 0.5, 0)
+	it.used.connect(func(_by: Node, _s: Node3D) -> void:
+		if Game.hud:
+			Game.hud.say(Game.partner.display_name if Game.partner else "Marco",
+				["In my defence, the puck was going VERY fast.", "...They said it'll be fixed by our second anniversary."],
+				Color(0.45, 0.66, 0.95), 0.8))
+
+
+func _box_col(parent: Node3D, at: Vector3, sz: Vector3) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = Game.PHYS_PROPS
+	parent.add_child(body)
+	body.position = at
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = sz
+	cs.shape = bs
+	body.add_child(cs)
 
 
 # ---------------------------------------------------------------------------
