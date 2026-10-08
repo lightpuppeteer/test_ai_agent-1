@@ -58,21 +58,27 @@ static func build(look: Dictionary) -> Node3D:
 	var fh := HEAD_SIZE.y * 0.92
 	var fz := HEAD_FRONT + 0.0025
 	var fc := Vector3(0, HEAD_CENTER.y - 0.01, fz)
-	var quad := [
-		[fc + Vector3(-fw / 2, -fh / 2, 0), Vector2(0, 1)], [fc + Vector3(fw / 2, -fh / 2, 0), Vector2(1, 1)],
-		[fc + Vector3(fw / 2, fh / 2, 0), Vector2(1, 0)], [fc + Vector3(-fw / 2, fh / 2, 0), Vector2(0, 0)],
-	]
-	for idx in [0, 2, 1, 0, 3, 2]:
-		fst.set_normal(Vector3(0, 0, 1))
-		fst.set_uv(quad[idx][1])
-		fst.set_bones(PackedInt32Array([BONES["head"], 0, 0, 0]))
-		fst.set_weights(PackedFloat32Array([1, 0, 0, 0]))
-		fst.add_vertex(quad[idx][0])
+	var hb: Dictionary = look.get("head_ball", {})
+	if not hb.is_empty():
+		# Round heads: the face is a curved decal hugging the front of the head.
+		_face_patch(fst, hb, fc, fw, fh)
+	else:
+		var quad := [
+			[fc + Vector3(-fw / 2, -fh / 2, 0), Vector2(0, 1)], [fc + Vector3(fw / 2, -fh / 2, 0), Vector2(1, 1)],
+			[fc + Vector3(fw / 2, fh / 2, 0), Vector2(1, 0)], [fc + Vector3(-fw / 2, fh / 2, 0), Vector2(0, 0)],
+		]
+		for idx in [0, 2, 1, 0, 3, 2]:
+			fst.set_normal(Vector3(0, 0, 1))
+			fst.set_uv(quad[idx][1])
+			fst.set_bones(PackedInt32Array([BONES["head"], 0, 0, 0]))
+			fst.set_weights(PackedFloat32Array([1, 0, 0, 0]))
+			fst.add_vertex(quad[idx][0])
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, fst.commit_to_arrays())
 	var fm := StandardMaterial3D.new()
 	fm.albedo_texture = face_tex
 	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	fm.alpha_scissor_threshold = 0.5
+	fm.set_meta("near_fade", 0.9)
 	fm.roughness = 0.7
 	fm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	mesh.surface_set_material(mesh.get_surface_count() - 1, fm)
@@ -86,10 +92,48 @@ static func build(look: Dictionary) -> Node3D:
 	return model
 
 
+## A grid over the face rectangle, each point pushed onto the head's surface.
+static func _face_patch(st: SurfaceTool, hb: Dictionary, fc: Vector3, fw: float, fh: float) -> void:
+	var size: Vector3 = hb["size"]
+	var h := size * 0.5
+	var at: Vector3 = hb["at"]
+	var pw: float = hb.get("power", 2.4)
+	const N := 18
+	var pts := []
+	for i in N + 1:
+		var row := []
+		for j in N + 1:
+			var uv := Vector2(float(j) / N, float(i) / N)
+			var x := fc.x + (uv.x - 0.5) * fw
+			var y := fc.y + (0.5 - uv.y) * fh
+			var nx := (x - at.x) / h.x
+			var ny := (y - at.y) / h.y
+			var rem := 1.0 - pow(absf(nx), pw) - pow(absf(ny), pw)
+			var nz := pow(maxf(rem, 0.0), 1.0 / pw)
+			var g := Vector3(_spow(nx, pw - 1.0) / h.x, _spow(ny, pw - 1.0) / h.y, pow(nz, pw - 1.0) / h.z).normalized()
+			var p := Vector3(x, y, at.z + nz * h.z) + g * 0.0035
+			row.append([p, g, uv])
+		pts.append(row)
+	for i in N:
+		for j in N:
+			var a: Array = pts[i][j]
+			var b: Array = pts[i][j + 1]
+			var c: Array = pts[i + 1][j + 1]
+			var d: Array = pts[i + 1][j]
+			# Seen from the front (+Z), clockwise: a (top-left) → b → c, a → c → d.
+			for v: Array in [a, b, c, a, c, d]:
+				st.set_normal(v[1])
+				st.set_uv(v[2])
+				st.set_bones(PackedInt32Array([BONES["head"], 0, 0, 0]))
+				st.set_weights(PackedFloat32Array([1, 0, 0, 0]))
+				st.add_vertex(v[0])
+
+
 static func material(kind: String) -> Material:
 	if _materials.has(kind):
 		return _materials[kind]
 	var m := StandardMaterial3D.new()
+	m.set_meta("near_fade", 0.9)   # dissolve if the camera ends up inside a head
 	m.vertex_color_use_as_albedo = true
 	m.vertex_color_is_srgb = true
 	match kind:
@@ -102,6 +146,10 @@ static func material(kind: String) -> Material:
 			m.metallic_specular = 0.6
 		"satin":
 			m.roughness = 0.55
+		"hair":          # open shells (hair caps, beards): seen from both sides
+			m.roughness = 0.65
+			m.metallic_specular = 0.4
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
 		_:
 			m.roughness = 0.85
 			m.metallic_specular = 0.3
@@ -117,6 +165,9 @@ static func material(kind: String) -> Material:
 ## bevel (default 0.012), rot (degrees), taper (Vector2 bottom x/z scale),
 ## shade (bottom darkening, default 0.1), color2 (bottom colour gradient).
 static func _add_block(st: SurfaceTool, p: Dictionary) -> void:
+	if p.get("shape", "") == "ball":
+		_add_ball(st, p)
+		return
 	var size: Vector3 = p["size"]
 	var h := size * 0.5
 	var c := minf(float(p.get("bevel", 0.012)), minf(h.x, minf(h.y, h.z)) * 0.6)
@@ -130,7 +181,8 @@ static func _add_block(st: SurfaceTool, p: Dictionary) -> void:
 	var bone: int = BONES[p["bone"]]
 	if ROUNDED:
 		# Soft, rounded blocks with smooth normals (the cozy look).
-		var r := minf(maxf(c * 2.0, minf(h.x, minf(h.y, h.z)) * 0.62), minf(h.x, minf(h.y, h.z)) * 0.95)
+		var frac: float = p.get("round", 0.62)     # corner radius as a share of the smallest half-size
+		var r := minf(maxf(c * 2.0, minf(h.x, minf(h.y, h.z)) * frac), minf(h.x, minf(h.y, h.z)) * 0.95)
 		var rb := _round_box(h, r)
 		var pos: PackedVector3Array = rb[0]
 		var nrm: PackedVector3Array = rb[1]
@@ -173,6 +225,150 @@ static func _add_block(st: SurfaceTool, p: Dictionary) -> void:
 			st.add_vertex(vs[k])
 
 
+## A soft "ball" part: a superellipsoid (power 2 = ellipsoid, higher = boxier
+## but still pillowy). Extra keys: power, segs/rings (resolution), and `cut`, a
+## list of [min, max] Vector3 boxes in the ball's normalised space (-1…1): any
+## triangle whose centre falls inside one is left out. That is how hair shells
+## get their face opening and beards their mouth line. Shells can be seen from
+## inside, so use them with a double-sided material ("hair").
+static func _add_ball(st: SurfaceTool, p: Dictionary) -> void:
+	var size: Vector3 = p["size"]
+	var h := size * 0.5
+	var at: Vector3 = p["at"]
+	var col: Color = p["color"]
+	var col2: Color = p.get("color2", col)
+	var shade: float = p.get("shade", 0.08)
+	var rot: Vector3 = p.get("rot", Vector3.ZERO)
+	var basis := Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z)))
+	var taper: Vector2 = p.get("taper", Vector2.ONE)
+	var bone: int = BONES[p["bone"]]
+	var cuts: Array = p.get("cut", [])
+	var power := float(p.get("power", 2.4))
+	var grid := _ball_grid(power, int(p.get("segs", 20)), int(p.get("rings", 14)))
+	var qs: PackedVector3Array = grid[0].duplicate()
+	var ns: PackedVector3Array = grid[1].duplicate()
+	var idx: PackedInt32Array = grid[2]
+	# Which triangles survive the cuts.
+	var keep := PackedInt32Array()
+	var used := {}
+	for t in range(0, idx.size(), 3):
+		var skip := false
+		if not cuts.is_empty():
+			var c: Vector3 = (qs[idx[t]] + qs[idx[t + 1]] + qs[idx[t + 2]]) / 3.0
+			for box in cuts:
+				if box is Dictionary:
+					if _in_window(c, box):
+						skip = true
+						break
+					continue
+				var mn: Vector3 = box[0]
+				var mx: Vector3 = box[1]
+				if c.x >= mn.x and c.x <= mx.x and c.y >= mn.y and c.y <= mx.y and c.z >= mn.z and c.z <= mx.z:
+					skip = true
+					break
+		if skip:
+			continue
+		keep.append_array([idx[t], idx[t + 1], idx[t + 2]])
+		for k in 3:
+			used[idx[t + k]] = true
+	# Kept vertices that poke into an elliptical window slide onto its rim, so
+	# the opening is a smooth curve instead of a staircase of triangles.
+	for box in cuts:
+		if not box is Dictionary:
+			continue
+		var el: Vector4 = box["ell"]
+		for i: int in used:
+			var q: Vector3 = qs[i]
+			if not _in_window(q, box):
+				continue
+			var d := Vector2((q.x - el.x) / el.z, (q.y - el.y) / el.w)
+			if d.length() < 1e-4:
+				continue
+			d = d.normalized()
+			var x := el.x + d.x * el.z
+			var y := el.y + d.y * el.w
+			var rem := 1.0 - pow(absf(x), power) - pow(absf(y), power)
+			var z := pow(maxf(rem, 0.0), 1.0 / power) * (1.0 if q.z >= 0.0 else -1.0)
+			qs[i] = Vector3(x, y, z)
+			var g := Vector3(_spow(x, power - 1.0), _spow(y, power - 1.0), _spow(z, power - 1.0))
+			ns[i] = g.normalized() if g.length() > 1e-6 else Vector3(0, 0, 1)
+	var pos := PackedVector3Array()
+	var nrm := PackedVector3Array()
+	var cols := PackedColorArray()
+	pos.resize(qs.size())
+	nrm.resize(qs.size())
+	cols.resize(qs.size())
+	for i in qs.size():
+		var q: Vector3 = qs[i]
+		var u := (q.y + 1.0) * 0.5
+		var sx := lerpf(taper.x, 1.0, u)
+		var sz := lerpf(taper.y, 1.0, u)
+		var v := Vector3(q.x * h.x * sx, q.y * h.y, q.z * h.z * sz)
+		var n: Vector3 = ns[i]
+		n = Vector3(n.x / (h.x * maxf(sx, 0.01)), n.y / h.y, n.z / (h.z * maxf(sz, 0.01)))
+		pos[i] = at + basis * v
+		nrm[i] = (basis * n).normalized()
+		cols[i] = col2.lerp(col, u).darkened(shade * (1.0 - u))
+	for t in keep.size():
+		var i: int = keep[t]
+		st.set_color(cols[i])
+		st.set_normal(nrm[i])
+		st.set_bones(PackedInt32Array([bone, 0, 0, 0]))
+		st.set_weights(PackedFloat32Array([1, 0, 0, 0]))
+		st.add_vertex(pos[i])
+
+
+## Elliptical window on the front of a ball: {"ell": Vector4(cx, cy, rx, ry), "z": min z}.
+static func _in_window(q: Vector3, w: Dictionary) -> bool:
+	var el: Vector4 = w["ell"]
+	return q.z >= float(w.get("z", 0.0)) and pow((q.x - el.x) / el.z, 2.0) + pow((q.y - el.y) / el.w, 2.0) <= 1.0
+
+
+static var _ball_cache := {}
+
+## Unit superellipsoid: [points on the surface (-1…1), gradient directions, triangle indices].
+static func _ball_grid(power: float, segs: int, rings: int) -> Array:
+	var key := [power, segs, rings]
+	if _ball_cache.has(key):
+		return _ball_cache[key]
+	var e := 2.0 / power
+	var qs := PackedVector3Array()
+	var ns := PackedVector3Array()
+	for i in rings + 1:
+		var v := -PI * 0.5 + PI * float(i) / rings
+		for j in segs + 1:
+			var u := -PI + TAU * float(j) / segs
+			var q := Vector3(_spow(cos(v), e) * _spow(cos(u), e), _spow(sin(v), e), _spow(cos(v), e) * _spow(sin(u), e))
+			qs.append(q)
+			var g := Vector3(_spow(q.x, power - 1.0), _spow(q.y, power - 1.0), _spow(q.z, power - 1.0))
+			ns.append(g.normalized() if g.length() > 1e-6 else Vector3(0, signf(q.y), 0))
+	var idx := PackedInt32Array()
+	for i in rings:
+		for j in segs:
+			var a := i * (segs + 1) + j
+			var b := a + 1
+			var c := a + segs + 2
+			var d := a + segs + 1
+			for tri: Array in [[a, b, c], [a, c, d]]:
+				var p0: Vector3 = qs[tri[0]]
+				var p1: Vector3 = qs[tri[1]]
+				var p2: Vector3 = qs[tri[2]]
+				var fn := (p1 - p0).cross(p2 - p0)
+				if fn.length() < 1e-7:
+					continue
+				# Godot front faces are clockwise seen from outside.
+				if fn.dot(p0 + p1 + p2) > 0.0:
+					idx.append_array([tri[0], tri[2], tri[1]])
+				else:
+					idx.append_array([tri[0], tri[1], tri[2]])
+	_ball_cache[key] = [qs, ns, idx]
+	return _ball_cache[key]
+
+
+static func _spow(x: float, e: float) -> float:
+	return signf(x) * pow(absf(x), e)
+
+
 static var _box_cache := {}
 const ROUNDED := true
 static var _round_cache := {}
@@ -180,12 +376,11 @@ static var _round_cache := {}
 ## A rounded box (half extents h, corner radius r) as a triangle list with
 ## smooth normals: [positions, normals]. Extra rows near the edges keep the
 ## curves smooth while flat faces stay cheap.
-static func _round_box(h: Vector3, r: float) -> Array:
-	var key := [h, r]
+static func _round_box(h: Vector3, r: float, M: int = 3) -> Array:
+	var key := [h, r, M]
 	if _round_cache.has(key):
 		return _round_cache[key]
 	var e := h - Vector3(r, r, r)
-	const M := 3
 	var coords := []
 	for axis in 3:
 		var cs: Array[float] = []

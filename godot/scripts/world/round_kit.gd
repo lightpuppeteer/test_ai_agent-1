@@ -184,10 +184,11 @@ class MB:
 				tri(mat, a, dd, cc)
 
 	## Rounded box (soft corners) with a vertical gradient.
-	func rbox(size: Vector3, at: Vector3, top: Color, bottom: Color, r: float, rot := Vector3.ZERO, mat := "matte") -> void:
+	## `lo` uses one row per rounded edge instead of three (for small, numerous bits).
+	func rbox(size: Vector3, at: Vector3, top: Color, bottom: Color, r: float, rot := Vector3.ZERO, mat := "matte", lo := false) -> void:
 		var h := size * 0.5
 		r = minf(r, minf(h.x, minf(h.y, h.z)) * 0.98)
-		var rb: Array = Avatar._round_box(h, r)
+		var rb: Array = Avatar._round_box(h, r, 1 if lo else 3)
 		var pos: PackedVector3Array = rb[0]
 		var nrm: PackedVector3Array = rb[1]
 		var basis := Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z)))

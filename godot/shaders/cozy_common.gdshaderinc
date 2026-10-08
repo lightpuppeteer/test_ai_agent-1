@@ -50,9 +50,13 @@ void cozy_light(vec3 normal, vec3 light, vec3 view, vec3 light_color, float atte
 
 // Dissolve anything right in front of the lens (e.g. when the camera slips
 // into a tree canopy) with a soft dither instead of showing its inside.
-bool near_cut(vec3 view_pos, vec2 frag) {
+bool near_cut_at(vec3 view_pos, vec2 frag, float far_d) {
 	float d = length(view_pos);
-	if (d > 2.4) return false;
+	if (d > far_d) return false;
 	float n = fract(52.9829189 * fract(dot(frag, vec2(0.06711056, 0.00583715))));
-	return n > smoothstep(0.9, 2.4, d);
+	return n > smoothstep(far_d * 0.375, far_d, d);
+}
+
+bool near_cut(vec3 view_pos, vec2 frag) {
+	return near_cut_at(view_pos, frag, 2.4);
 }

@@ -75,7 +75,15 @@ func _ready() -> void:
 	env.ssao_intensity = 1.6
 	env.ssao_power = 1.4
 	env.ssao_light_affect = 0.15
-	env.ssil_enabled = false   # costly on laptop GPUs; SSAO + sky light is enough here
+	# Screen-space indirect light (as in Godot's GI demo): sunlit grass and walls
+	# bounce a little colour onto what is next to them. It costs ~2.5 ms on the
+	# MacBook's Radeon 5300M (dropping the island below 60 fps), so it is opt-in:
+	# run with `--ssil` on a faster GPU.
+	env.ssil_enabled = Game.options.has("ssil")
+	env.ssil_radius = 3.0
+	env.ssil_intensity = 0.9
+	env.ssil_sharpness = 0.9
+	env.ssil_normal_rejection = 1.0
 	env.glow_enabled = true
 	env.glow_intensity = 0.45
 	env.glow_strength = 0.9

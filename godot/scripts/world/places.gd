@@ -365,7 +365,7 @@ func _cinema() -> void:
 				seats_parent.add_child(seat)
 				seat.position = Vector3(cx - 0.4 + k * 0.8, y, z)
 				seat.rotation.y = PI   # facing the screen (-Z)
-			var it := _seat_pair(seats_parent, Vector3(cx, y, z + 0.1), 0.0, "sit", "Sit down for the movie", 0.8, 0.48, "cinema_seats")
+			var it := _seat_pair(seats_parent, Vector3(cx, y, z - 0.08), 0.0, "sit", "Sit down for the movie", 0.8, 0.54, "cinema_seats")
 			if row == 1 and pair == 1:
 				spots["cinema_seats"] = it
 	# Popcorn stand by the door.
@@ -911,9 +911,11 @@ func _causeway() -> void:
 	root.add_child(body)
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(width, 0.4, length)
+	# Solid all the way down (invisible below the deck): near the shore the sand
+	# rises close to the deck and the car could wedge itself underneath.
+	bs.size = Vector3(width, 3.4, length)
 	cs.shape = bs
-	cs.position.y = -0.2
+	cs.position.y = -1.7
 	body.add_child(cs)
 	# Low walls along the sides (and invisible rails so nobody drives into the sea).
 	for sx in [-1.0, 1.0]:
@@ -962,8 +964,11 @@ func _causeway() -> void:
 		var gy := maxf(B.ground(land.x, land.z), 0.2)
 		var ramp := CollisionShape3D.new()
 		var rbs := BoxShape3D.new()
-		rbs.size = Vector3(width, 0.4, RUN + 1.2)
+		# Thick, so there is never a gap under it for a wheel to drop into, and
+		# a little longer so it tucks into the beach.
+		rbs.size = Vector3(width, 2.0, RUN + 2.4)
 		ramp.shape = rbs
+		ramp.position.y = -0.8
 		var rnode := StaticBody3D.new()
 		rnode.collision_layer = Game.PHYS_WORLD
 		add_child(rnode)
@@ -971,11 +976,29 @@ func _causeway() -> void:
 		var rmesh := MeshInstance3D.new()
 		var rmm := BoxMesh.new()
 		rmm.size = rbs.size
-		rmm.subdivide_depth = 12
+		rmm.subdivide_depth = 14
 		rmm.subdivide_width = 4
 		rmesh.mesh = rmm
 		rmesh.material_override = mat
+		rmesh.position.y = -0.8
 		rnode.add_child(rmesh)
+		# Side walls + tall invisible rails along the ramp too (the car used to
+		# slip off the side between the beach and the deck and get wedged).
+		for sx in [-1.0, 1.0]:
+			var rw := MeshInstance3D.new()
+			var rwm := BoxMesh.new()
+			rwm.size = Vector3(0.3, 0.45, RUN + 1.2)
+			rwm.subdivide_depth = 8
+			rw.mesh = rwm
+			rw.material_override = _mat(Color(0.95, 0.93, 0.9))
+			rw.position = Vector3(sx * (width * 0.5 - 0.15), 0.42, 0.0)
+			rnode.add_child(rw)
+			var rr := CollisionShape3D.new()
+			var rrb := BoxShape3D.new()
+			rrb.size = Vector3(0.3, 1.8, RUN + 1.2)
+			rr.shape = rrb
+			rr.position = Vector3(sx * (width * 0.5 - 0.15), 1.0, 0.0)
+			rnode.add_child(rr)
 		var centre := end + outward * (RUN * 0.5)
 		centre.y = (DECK_Y + gy) * 0.5 - 0.2
 		rnode.global_position = centre

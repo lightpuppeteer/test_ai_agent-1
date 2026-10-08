@@ -102,5 +102,8 @@ static func to_cozy(m: Material) -> Material:
 		sm.set_shader_parameter("scissor", b.alpha_scissor_threshold)
 	if m.has_meta("near_fade"):
 		sm.set_shader_parameter("near_fade", true)
+		var nf = m.get_meta("near_fade")
+		if nf is float:
+			sm.set_shader_parameter("near_fade_dist", nf)
 	_cache[m] = sm
 	return sm

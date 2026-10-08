@@ -43,7 +43,7 @@ func _ready() -> void:
 	var cx := (cols - 1) * 0.3
 	cam.position = Vector3(cx, 0.0, 3.0)
 	cam.look_at(Vector3(cx, -0.05, 0))
-	get_viewport().size = Vector2i(2000, 600)
+	get_viewport().size = Vector2i(2000, 800)
 	for k in 6:
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(out)

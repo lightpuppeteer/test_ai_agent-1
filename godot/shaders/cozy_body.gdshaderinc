@@ -16,7 +16,8 @@ uniform float emission_energy = 0.0;
 uniform sampler2D emission_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool use_emission_tex = false;
 uniform float scissor = 0.5;
-uniform bool near_fade = false;     // dissolve near the camera (tree canopies)
+uniform bool near_fade = false;     // dissolve near the camera (tree canopies, characters)
+uniform float near_fade_dist = 2.4; // fully solid beyond this distance
 
 void vertex() {
 	UV = UV * uv1_scale.xy + uv1_offset.xy;
@@ -24,7 +25,7 @@ void vertex() {
 }
 
 void fragment() {
-	if (near_fade && near_cut(VERTEX, FRAGCOORD.xy)) {
+	if (near_fade && near_cut_at(VERTEX, FRAGCOORD.xy, near_fade_dist)) {
 		discard;
 	}
 	vec4 c = albedo;

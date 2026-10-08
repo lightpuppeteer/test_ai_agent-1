@@ -26,9 +26,16 @@ const HAIR_HIM := Color(0.15, 0.10, 0.08)
 const BEARD := Color(0.19, 0.13, 0.10)
 const HAIR_HER := Color(0.26, 0.18, 0.13)
 const HAIR_HER_TIPS := Color(0.42, 0.30, 0.22)
-const BLONDE := Color(0.94, 0.88, 0.72)
+const BLONDE := Color(0.93, 0.77, 0.47)
 const BLACK := Color(0.11, 0.11, 0.12)
 const WHITE := Color(0.96, 0.95, 0.92)
+
+
+## The round chibi head shared by both of you (a soft superellipsoid).
+const HB_SIZE := Vector3(0.42, 0.36, 0.38)
+const HB_AT := Vector3(0.0, 0.522, -0.005)
+const HB_POW := 2.6
+const FRONT := HB_AT.z + 0.19
 
 
 static func look(who: String, outfit: String) -> Dictionary:
@@ -48,7 +55,14 @@ static func look(who: String, outfit: String) -> Dictionary:
 		parts.append_array(_sunglasses_on_eyes() if outfit == "gallery" else _sunglasses_on_head())
 		face = {"eyes": "round", "brows": Color(0.45, 0.33, 0.25), "mouth": "grin", "blush": true, "lash": true}
 		parts.append_array(_outfit_her(outfit))
-	return {"parts": parts, "face": face}
+	return {"parts": parts, "face": face, "head_ball": {"size": HB_SIZE, "at": HB_AT, "power": HB_POW}}
+
+
+## A soft ball part (see Avatar._add_ball).
+static func _ball(bone: String, size: Vector3, at: Vector3, color: Color, extra: Dictionary = {}) -> Dictionary:
+	var d := {"bone": bone, "size": size, "at": at, "color": color, "shape": "ball", "shade": 0.0}
+	d.merge(extra, true)
+	return d
 
 
 # ---------------------------------------------------------------------------
@@ -71,8 +85,9 @@ static func _pair(bone_l: String, bone_r: String, size: Vector3, at: Vector3, co
 
 
 static func _head(skin: Color) -> Array:
-	var p: Array = [_b("head", A.HEAD_SIZE, A.HEAD_CENTER, skin, {"bevel": 0.04, "shade": 0.05})]
-	p.append_array(_pair("head", "head", Vector3(0.04, 0.09, 0.07), Vector3(0.215, 0.5, -0.01), skin.darkened(0.04)))
+	# A big, soft, round chibi head with little ears.
+	var p: Array = [_ball("head", HB_SIZE, HB_AT, skin, {"power": HB_POW, "segs": 28, "rings": 20, "shade": 0.04})]
+	p.append_array(_pair("head", "head", Vector3(0.05, 0.085, 0.07), Vector3(0.205, 0.5, -0.01), skin.darkened(0.04), {"shape": "ball", "shade": 0.0, "power": 2.2}))
 	return p
 
 
@@ -81,18 +96,18 @@ static func _arms(skin: Color, thick: float = 0.08) -> Array:
 	var y := A.SHOULDER.y - 0.006
 	var z := A.SHOULDER.z
 	var arm_len := A.ARM_END - 0.09
-	var p := _pair("arm-left", "arm-right", Vector3(arm_len, thick, thick), Vector3(0.09 + arm_len * 0.5, y, z), skin, {"shade": 0.0})
-	p.append_array(_pair("arm-left", "arm-right", Vector3(0.06, 0.088, 0.1), Vector3(A.ARM_END + 0.02, y, z), skin, {"shade": 0.0, "bevel": 0.02}))
+	var p := _pair("arm-left", "arm-right", Vector3(arm_len, thick, thick), Vector3(0.09 + arm_len * 0.5, y, z), skin, {"shade": 0.0, "round": 0.92})
+	p.append_array(_pair("arm-left", "arm-right", Vector3(0.085, 0.095, 0.1), Vector3(A.ARM_END + 0.022, y, z), skin, {"shade": 0.0, "shape": "ball", "power": 2.2, "segs": 12, "rings": 8}))
 	return p
 
 
 static func _sleeves(color: Color, length: float, thick: float = 0.1, mat: String = "matte") -> Array:
 	var y := A.SHOULDER.y - 0.006
-	return _pair("arm-left", "arm-right", Vector3(length, thick, thick), Vector3(0.085 + length * 0.5, y, A.SHOULDER.z), color, {"shade": 0.0, "mat": mat})
+	return _pair("arm-left", "arm-right", Vector3(length, thick, thick), Vector3(0.085 + length * 0.5, y, A.SHOULDER.z), color, {"shade": 0.0, "mat": mat, "round": 0.85})
 
 
 static func _legs(skin: Color) -> Array:
-	return _pair("leg-left", "leg-right", Vector3(0.11, A.HIP_Y + 0.01, 0.12), Vector3(A.LEG_X, (A.HIP_Y + 0.01) * 0.5, -0.028), skin, {"shade": 0.0})
+	return _pair("leg-left", "leg-right", Vector3(0.11, A.HIP_Y + 0.01, 0.12), Vector3(A.LEG_X, (A.HIP_Y + 0.01) * 0.5, -0.028), skin, {"shade": 0.0, "round": 0.9})
 
 
 ## Cloth around both legs from y0 to y1 (taper widens the bottom: >1 flares).
@@ -117,6 +132,9 @@ static func _flipflops(skin: Color, strap: Color) -> Array:
 
 
 static func _torso(color: Color, grow: float = 0.0, extra: Dictionary = {}) -> Dictionary:
+	if not extra.has("round"):
+		extra = extra.duplicate()
+		extra["round"] = 0.75
 	return _b("torso", A.TORSO_SIZE + Vector3(grow, grow * 0.5, grow), A.TORSO_CENTER + Vector3(0, grow * 0.25, 0), color, extra)
 
 
@@ -127,61 +145,62 @@ static func _torso(color: Color, grow: float = 0.0, extra: Dictionary = {}) -> D
 static func _hair_him() -> Array:
 	var h := HAIR_HIM
 	var p: Array = [
-		_b("head", Vector3(0.43, 0.085, 0.395), Vector3(0, 0.69, -0.012), h, {"bevel": 0.03, "shade": 0.0}),
-		_b("head", Vector3(0.42, 0.25, 0.05), Vector3(0, 0.585, -0.19), h, {"shade": 0.0}),
+		# Short hair: a shell over the head, open at the face, cut above the ears.
+		_ball("head", Vector3(0.45, 0.39, 0.41), Vector3(0, 0.536, -0.01), h.lightened(0.05), {"mat": "hair", "power": 2.6, "segs": 52, "rings": 36, "color2": h,
+			"cut": [{"ell": Vector4(0, -0.35, 0.84, 0.72), "z": 0.0}, [Vector3(-1.1, -1.1, -0.5), Vector3(1.1, -0.25, 1.1)], [Vector3(-1.1, -1.1, -1.1), Vector3(1.1, -0.7, 1.1)]]}),
 	]
-	p.append_array(_pair("head", "head", Vector3(0.035, 0.14, 0.30), Vector3(0.205, 0.625, -0.03), h, {"shade": 0.0}))
-	# Messy fringe and tufts.
-	for t in [[-0.13, 12.0], [-0.02, -8.0], [0.1, 15.0]]:
-		p.append(_b("head", Vector3(0.14, 0.075, 0.07), Vector3(t[0], 0.665, A.HEAD_FRONT - 0.005), h, {"rot": Vector3(-10, 0, t[1]), "shade": 0.0}))
-	for t in [[-0.1, 0.03, 20.0], [0.08, -0.06, -25.0], [0.0, 0.1, 10.0], [0.12, 0.08, 35.0]]:
-		p.append(_b("head", Vector3(0.13, 0.05, 0.12), Vector3(t[0], 0.738, t[1]), h, {"rot": Vector3(t[2] * 0.5, t[2], t[2] * 0.3), "shade": 0.0}))
+	# Messy fringe and tufts on top.
+	for t in [[-0.12, 14.0], [-0.01, -8.0], [0.1, 16.0]]:
+		p.append(_ball("head", Vector3(0.15, 0.065, 0.07), Vector3(t[0], 0.662, FRONT - 0.02), h.lightened(0.05), {"mat": "hair", "rot": Vector3(-14, 0, t[1]), "power": 2.2, "segs": 12, "rings": 8}))
+	for t in [[-0.1, 0.03, 20.0], [0.08, -0.06, -25.0], [0.0, 0.1, 10.0], [0.12, 0.06, 35.0], [-0.06, -0.12, -15.0]]:
+		p.append(_ball("head", Vector3(0.17, 0.06, 0.15), Vector3(t[0], 0.7, t[1]), h.lightened(0.05), {"mat": "hair", "rot": Vector3(t[2] * 0.3, t[2], t[2] * 0.2), "power": 2.2, "segs": 12, "rings": 8}))
 	return p
 
 
 static func _beard() -> Array:
 	var c := BEARD
-	var f := A.HEAD_FRONT
+	# A full beard: the lower part of a shell around the head, with a lip line and a moustache.
 	var p: Array = [
-		# Full beard: chin/jaw block, cheeks, under the chin and a moustache.
-		_b("head", Vector3(0.39, 0.105, 0.032), Vector3(0, 0.398, f + 0.01), c, {"bevel": 0.014, "shade": 0.0}),
-		_b("head", Vector3(0.34, 0.05, 0.24), Vector3(0, 0.338, 0.06), c, {"bevel": 0.02, "shade": 0.0}),
-		_b("head", Vector3(0.17, 0.028, 0.022), Vector3(0, 0.462, f + 0.008), c, {"bevel": 0.01, "shade": 0.0}),
+		_ball("head", Vector3(0.44, 0.38, 0.405), Vector3(0, 0.512, 0.0), c, {"mat": "hair", "power": 2.6, "segs": 52, "rings": 36,
+			"cut": [[Vector3(-1.1, -0.05, -1.1), Vector3(1.1, 1.1, 1.1)], {"ell": Vector4(0, 0.12, 0.8, 0.68), "z": 0.0}, [Vector3(-1.1, -1.1, -1.1), Vector3(1.1, 1.1, -0.45)]]}),
+		_ball("head", Vector3(0.16, 0.04, 0.05), Vector3(0, 0.466, FRONT - 0.012), c, {"power": 2.2, "segs": 12, "rings": 8}),
 	]
-	p.append_array(_pair("head", "head", Vector3(0.07, 0.07, 0.03), Vector3(0.165, 0.465, f + 0.006), c, {"shade": 0.0}))
-	p.append_array(_pair("head", "head", Vector3(0.026, 0.2, 0.3), Vector3(0.206, 0.44, 0.02), c, {"shade": 0.0}))
+	p.append_array(_pair("head", "head", Vector3(0.06, 0.045, 0.045), Vector3(0.075, 0.455, FRONT - 0.022), c, {"shape": "ball", "rot": Vector3(0, 0, -25), "power": 2.2, "segs": 10, "rings": 6, "shade": 0.0}))
 	return p
 
 
 static func _sunglasses_on_eyes() -> Array:
-	var f := A.HEAD_FRONT
+	var f := FRONT
 	var g := Color(0.06, 0.06, 0.07)
-	var p: Array = [_b("head", Vector3(0.09, 0.016, 0.02), Vector3(0, 0.538, f + 0.012), g, {"mat": "glossy", "shade": 0.0})]
-	# Two rectangular lenses.
-	p.append_array(_pair("head", "head", Vector3(0.14, 0.072, 0.024), Vector3(0.09, 0.522, f + 0.014), g, {"mat": "glossy", "bevel": 0.012, "shade": 0.0}))
-	p.append_array(_pair("head", "head", Vector3(0.02, 0.02, 0.2), Vector3(0.203, 0.535, 0.085), g, {"mat": "glossy", "shade": 0.0}))
+	var p: Array = [_b("head", Vector3(0.07, 0.016, 0.02), Vector3(0, 0.532, f + 0.012), g, {"mat": "glossy", "shade": 0.0})]
+	# Two rectangular lenses, angled to follow the round face.
+	p.append_array(_pair("head", "head", Vector3(0.14, 0.074, 0.024), Vector3(0.088, 0.52, f + 0.004), g, {"mat": "glossy", "bevel": 0.012, "shade": 0.0, "rot": Vector3(0, 14, 0)}))
+	p.append_array(_pair("head", "head", Vector3(0.02, 0.02, 0.2), Vector3(0.228, 0.53, 0.07), g, {"mat": "glossy", "shade": 0.0}))
 	return p
 
 
 static func _hair_her() -> Array:
 	var h := HAIR_HER
-	var f := A.HEAD_FRONT
 	var p: Array = [
-		_b("head", Vector3(0.445, 0.085, 0.405), Vector3(0, 0.695, -0.012), h, {"bevel": 0.035, "shade": 0.0}),
-		# Long hair down the back, a little lighter at the ends.
-		_b("head", Vector3(0.45, 0.52, 0.085), Vector3(0, 0.46, -0.205), h, {"color2": HAIR_HER_TIPS, "shade": 0.0, "bevel": 0.025, "taper": Vector2(1.06, 1.0)}),
+		# A soft cap of hair over the head, open at the face.
+		_ball("head", Vector3(0.46, 0.4, 0.42), Vector3(0, 0.534, -0.013), h.lightened(0.06), {"mat": "hair", "power": 2.5, "segs": 52, "rings": 36, "color2": h,
+			"cut": [{"ell": Vector4(0, -0.4, 0.8, 0.74), "z": -0.05}, [Vector3(-1.1, -1.1, -1.1), Vector3(1.1, -0.6, 1.1)]]}),
+		# Long hair down the back, lighter at the ends.
+		_ball("head", Vector3(0.48, 0.56, 0.27), Vector3(0, 0.46, -0.12), h, {"mat": "hair", "power": 2.3, "color2": HAIR_HER_TIPS, "taper": Vector2(1.0, 0.7), "segs": 24, "rings": 16}),
 	]
-	# Side curtains of hair.
-	p.append_array(_pair("head", "head", Vector3(0.045, 0.42, 0.30), Vector3(0.218, 0.5, -0.05), h, {"color2": HAIR_HER_TIPS, "shade": 0.0, "bevel": 0.015}))
+	# Side locks over the shoulders.
+	p.append_array(_pair("head", "head", Vector3(0.08, 0.36, 0.17), Vector3(0.2, 0.42, -0.03), h, {"shape": "ball", "mat": "hair", "power": 2.3, "color2": HAIR_HER_TIPS, "taper": Vector2(0.75, 0.8), "rot": Vector3(0, 0, 5), "shade": 0.0}))
 	# Platinum "money piece" strands framing the face (middle part).
-	p.append_array(_pair("head", "head", Vector3(0.05, 0.43, 0.05), Vector3(0.19, 0.49, f + 0.004), BLONDE, {"color2": BLONDE.darkened(0.06), "shade": 0.0, "bevel": 0.012}))
+	p.append_array(_pair("head", "head", Vector3(0.055, 0.31, 0.05), Vector3(0.178, 0.49, 0.125), BLONDE, {"shape": "ball", "mat": "hair", "power": 2.2, "color2": BLONDE.darkened(0.1), "taper": Vector2(0.55, 0.7), "rot": Vector3(0, 0, 4), "shade": 0.0, "segs": 14, "rings": 12}))
+	# Swept fringe from the middle part.
+	p.append_array(_pair("head", "head", Vector3(0.21, 0.075, 0.05), Vector3(0.095, 0.61, 0.162), h.lightened(0.06), {"shape": "ball", "mat": "hair", "power": 2.3, "rot": Vector3(-18, 0, -16), "shade": 0.0, "segs": 14, "rings": 10}))
 	return p
 
 
 static func _sunglasses_on_head() -> Array:
 	var g := Color(0.07, 0.07, 0.08)
-	var p: Array = [_b("head", Vector3(0.37, 0.065, 0.05), Vector3(0, 0.745, 0.105), g, {"mat": "glossy", "rot": Vector3(-25, 0, 0), "bevel": 0.01, "shade": 0.0})]
-	p.append_array(_pair("head", "head", Vector3(0.02, 0.02, 0.2), Vector3(0.21, 0.73, 0.0), g, {"mat": "glossy", "shade": 0.0}))
+	var p: Array = [_b("head", Vector3(0.05, 0.02, 0.03), Vector3(0, 0.712, 0.118), g, {"mat": "glossy", "rot": Vector3(-30, 0, 0), "shade": 0.0})]
+	p.append_array(_pair("head", "head", Vector3(0.15, 0.06, 0.04), Vector3(0.08, 0.7, 0.115), g, {"mat": "glossy", "rot": Vector3(-30, 0, -18), "bevel": 0.012, "shade": 0.0}))
 	return p
 
 

@@ -146,6 +146,11 @@ func _process(_delta: float) -> void:
 		RenderingServer.global_shader_parameter_set("curve_origin", cam.global_position)
 		var f := -cam.global_transform.basis.z
 		RenderingServer.global_shader_parameter_set("curve_dir", Vector3(f.x, 0.0, f.z))
+	# Grass bends away from the two of you.
+	if player and is_instance_valid(player):
+		RenderingServer.global_shader_parameter_set("player_pos", player.global_position)
+	if partner and is_instance_valid(partner):
+		RenderingServer.global_shader_parameter_set("partner_pos", partner.global_position)
 
 
 func _setup_input() -> void:

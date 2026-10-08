@@ -49,6 +49,8 @@ func _ready() -> void:
 	places.build(self)
 	_trees()
 	_scatter()
+	if not Game.options.has("nograss"):
+		GrassField.build(self)
 	print("[island] dressed in %d ms (%d nodes)" % [Time.get_ticks_msec() - t0, get_child_count()])
 
 
@@ -129,8 +131,10 @@ func bench(x: float, z: float, yaw: float) -> Interactable:
 	it.radius = 2.0
 	n.add_child(it)
 	# Seats face the bench front (+Z of the model); the character faces the seat's -Z.
-	it.add_seat(Vector3(-0.42, BENCH_SEAT_H, 0.06), 180.0)
-	it.add_seat(Vector3(0.42, BENCH_SEAT_H, 0.06), 180.0)
+	# A touch higher and further forward than the slats, so thighs rest on the
+	# seat instead of sinking through it.
+	it.add_seat(Vector3(-0.42, BENCH_SEAT_H + 0.08, 0.13), 180.0)
+	it.add_seat(Vector3(0.42, BENCH_SEAT_H + 0.08, 0.13), 180.0)
 	it.position = Vector3(0, 0, 0.35)
 	for s in it.seats:
 		s.position.z -= 0.35
@@ -213,11 +217,37 @@ func parasol(x: float, z: float, colors: Array, tilt: float = 8.0) -> void:
 
 ## Suburban house with a recoloured roof and cream walls. yaw: direction the door faces.
 func house(x: float, z: float, yaw: float, type: String, roof: Color, mul: float = 1.0) -> Node3D:
+	if not Game.options.has("kenney"):
+		return _cottage(x, z, yaw, type, roof, mul)
 	var opts := {
 		"recolor": {SUBURBAN_ROOF: roof, SUBURBAN_WALL: Color(0.99, 0.93, 0.82)},
 		"min_ground": true, "dy": -0.05,
 	}
 	var n := put("city-kit-suburban/building-type-" + type, x, z, yaw, mul, "box", opts, 4.6 * mul)
+	return n
+
+
+## A rounded storybook cottage in place of the boxy suburban house.
+func _cottage(x: float, z: float, yaw: float, type: String, roof: Color, mul: float) -> Node3D:
+	var n := Cottage.make(type, roof, mul)
+	add_child(n)
+	var bb: AABB = n.get_meta("aabb")
+	var y := ground(x, z)
+	var r := maxf(bb.size.x, bb.size.z) * 0.5
+	for o in [Vector2(r, r), Vector2(-r, r), Vector2(r, -r), Vector2(-r, -r)]:
+		y = minf(y, ground(x + o.x * 0.7, z + o.y * 0.7))
+	n.position = Vector3(x, y - 0.05, z)
+	n.rotation.y = deg_to_rad(yaw)
+	var body := StaticBody3D.new()
+	body.collision_layer = Game.PHYS_PROPS
+	n.add_child(body)
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(bb.size.x * 0.9, bb.size.y, bb.size.z * 0.9)
+	cs.shape = box
+	cs.position = bb.get_center()
+	body.add_child(cs)
+	occupied.append(Vector3(x, z, 4.6 * mul))
 	return n
 
 
@@ -484,7 +514,6 @@ func _hill() -> void:
 		var ez := L.HILL_EDGE_Z + 1.4 * sin(x * 0.09) + 0.8 * sin(x * 0.23 + 1.0) - 2.2
 		put("nature-kit/fence_simple", x, ez, 0.0, 1.0, "box", {}, 0.0)
 		x += Props.model_aabb("nature-kit/fence_simple").size.x * Props.kit_scale("nature-kit/fence_simple") * 0.98
-	put("nature-kit/sign", 22.5, -46.5, -30.0, 1.0, "box", {}, 0.5)
 	soil_bed(-8.0, -46.0, 2.2, ["nature-kit/flower_redA", "nature-kit/flower_purpleA", "nature-kit/flower_yellowB"])
 	soil_bed(-14.0, -50.0, 1.8, ["nature-kit/flower_purpleB", "nature-kit/flower_redB"])
 
@@ -559,12 +588,15 @@ func _scatter() -> void:
 			continue
 		var r := rng.randf()
 		var id: String
-		if r < 0.62:
-			id = ["nature-kit/grass", "nature-kit/grass_large", "nature-kit/grass_leafs"][rng.randi() % 3]
-		elif r < 0.7:
+		# (The short lawn grass is the GrassField; these are taller accent tufts.)
+		if r < 0.12:
+			id = ["nature-kit/grass", "nature-kit/grass_large", "nature-kit/grass_leafs", "nature-kit/grass_leafs"][rng.randi() % 4]
+		elif r < 0.36:
 			id = ["nature-kit/plant_bush", "nature-kit/plant_bushDetailed"][rng.randi() % 2]
-		elif r < 0.72:
+		elif r < 0.38:
 			id = "nature-kit/mushroom_redGroup"
+		elif r > 0.66:
+			continue
 		else:
 			# Flowers come in little clumps.
 			id = wild_flowers[rng.randi() % wild_flowers.size()]

@@ -54,7 +54,8 @@ func build() -> void:
 		var lat := Vector3(-3.0 + i * 2.6, DECK_H, -(hz + band_z * 0.5))
 		_lounger(parts, lat, [Color(1.0, 0.62, 0.55), Color(0.45, 0.78, 0.82), Color(1.0, 0.85, 0.45)][i])
 		shapes.append([Vector3(1.7, 0.5, 0.66), lat + Vector3(0.1, 0.25, 0)])
-		# Lie down on it (head towards the backrest, -X); he takes the next one.
+		# Lie down on it (head towards the backrest, -X; a lying character's head
+		# points along its anchor's +Z, so the anchor turns -90°). He takes the next one.
 		var it := Interactable.new()
 		it.kind = "lie"
 		it.prompt = "Lie on the sun lounger"
@@ -62,7 +63,7 @@ func build() -> void:
 		it.tag = "pool_lounger"
 		add_child(it)
 		it.position = lat + Vector3(0.15, 0.0, 0.0)
-		it.add_seat(Vector3(0, 0.46, 0), 90.0)
+		it.add_seat(Vector3(0.05, 0.46, 0), -90.0)
 	# Basin: tiled floor and walls, white coping around the edge.
 	var floor_s := Vector3(HOLE.x, 0.5, HOLE.y)
 	var floor_c := Vector3(0, FLOOR_H - 0.25, 0)

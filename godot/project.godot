@@ -66,6 +66,8 @@ lights_and_shadows/directional_shadow/size=4096
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
 environment/ssao/quality=2
+environment/ssil/quality=1
+environment/ssil/half_size=true
 textures/default_filters/anisotropic_filtering_level=3
 
 [shader_globals]
@@ -81,6 +83,14 @@ curve_origin={
 curve_dir={
 "type": "vec3",
 "value": Vector3(0, 0, -1)
+}
+player_pos={
+"type": "vec3",
+"value": Vector3(0, -100, 0)
+}
+partner_pos={
+"type": "vec3",
+"value": Vector3(0, -100, 0)
 }
 shadow_tint={
 "type": "vec4",

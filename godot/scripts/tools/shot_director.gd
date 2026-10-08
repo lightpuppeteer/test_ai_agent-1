@@ -48,6 +48,9 @@ const VIEWS := {
 	"sign_hotel": {"pos": Vector3(-42, 4.0, -13), "look": Vector3(-52, 3.6, -15)},
 	"sign_garden": {"pos": Vector3(44.5, 2.6, -13.5), "look": Vector3(51.3, 2.8, -15)},
 	"sign_house": {"pos": Vector3(32.5, 2.6, -13), "look": Vector3(30.4, 1.2, -17.5)},
+	"cottage_ours": {"pos": Vector3(37.0, 5.0, -9.0), "look": Vector3(28.0, 3.0, -23.0)},
+	"cottage_her": {"pos": Vector3(-19.0, 4.5, -10.0), "look": Vector3(-28.0, 2.5, -23.0)},
+	"cottage_pizza": {"pos": Vector3(-19.0, 5.0, 12.0), "look": Vector3(-28.0, 3.0, 1.0)},
 	"sign_her": {"pos": Vector3(-23.0, 2.2, -14.0), "look": Vector3(-24.5, 1.2, -18)},
 	"sign_oasis": {"action": "_act_sign_oasis"},
 	"yoggihouse": {"action": "_act_yoggihouse"},
@@ -67,6 +70,8 @@ const VIEWS := {
 	"promenade": {"pos": Vector3(-13.0, 4.5, 21.0), "look": Vector3(-20.0, 2.0, 14.0)},
 	"loungers": {"action": "_act_loungers"},
 	"probe": {"action": "_act_probe"},
+	"cwside": {"action": "_act_cwside"},
+	"sitclose": {"action": "_act_sitclose"},
 	"arcade_front": {"pos": Vector3(6.0, 4.0, -14.0), "look": Vector3(0, 3.0, -24)},
 }
 
@@ -1015,3 +1020,44 @@ func _act_probe() -> void:
 		hits.sort_custom(func(a, b): return a[0] < b[0])
 		for h in hits.slice(0, 8):
 			log_line("[probe]   %.1f %s %s" % [h[0], h[1], h[2]])
+
+
+## Drive onto the island end of the causeway at an angle (used to wedge the car).
+func _act_cwside() -> void:
+	var car: Car = get_tree().current_scene.get_node("Car")
+	var d := Places.CAUSEWAY_TO - Places.CAUSEWAY_FROM
+	d.y = 0
+	d = d.normalized()
+	var side := Vector3(d.z, 0, -d.x)
+	for attempt in [[-1.0, 0.6], [1.0, 0.6], [-1.0, 1.2]]:
+		var start: Vector3 = Places.CAUSEWAY_FROM - d * 12.0 + side * 5.0 * float(attempt[0])
+		start.y = Game.terrain.height_at(start.x, start.z) + 0.8
+		var aim: Vector3 = Places.CAUSEWAY_FROM - side * float(attempt[0]) - start
+		aim.y = 0
+		aim = aim.normalized().rotated(Vector3.UP, 0.25 * attempt[0] * attempt[1])
+		if Game.player.pose == "drive":
+			Game.player.exit_car()
+			await _frames(30)
+		car.global_transform = Transform3D(Basis(Vector3.UP, atan2(aim.x, aim.z)), start)
+		car.linear_velocity = Vector3.ZERO
+		await _frames(10)
+		await _place(start + side * 2.4, 0.0, 0.0, -18.0, 9.0)
+		await Game.player.enter_car(car)
+		Input.action_press("move_forward")
+		for i in 9:
+			await get_tree().create_timer(1.0).timeout
+		Input.action_release("move_forward")
+		log_line("[cwside] attempt %s -> car at %s speed %.1f, along deck %.1f" % [attempt, car.global_position, car.speed_kmh(), (car.global_position - Places.CAUSEWAY_FROM).dot(d)])
+
+
+## Close-up of the two of them on a bench (clipping check).
+func _act_sitclose() -> void:
+	var b := _nearest("sit", Vector3(6, 2, 15))
+	await _place(b.global_position + b.global_transform.basis.z * 1.2, 0.0, 0.3, -12.0, 5.5)
+	Game.player.use(b)
+	await _frames(120)
+	cam.current = true
+	var side: Vector3 = b.global_transform.basis.x
+	cam.global_position = b.global_position + side * 2.6 + Vector3(0, 0.9, 0.6)
+	cam.look_at(b.global_position + Vector3(0, 0.5, 0))
+	await _frames(10)
