@@ -38,6 +38,67 @@ func _ready() -> void:
 # ---------------------------------------------------------------------------
 
 func compute_height(x: float, z: float) -> float:
+	var h := _base_height(x, z)
+	# The branch road to the causeway is graded into one smooth, even slope (no
+	# bumps or steps where it leaves the promenade and drops to the ramp), and the
+	# ground either side is blended into it.
+	var L := WorldLayout
+	if L.BRANCH_BOX.has_point(Vector2(x, z)):
+		var hit := _branch_nearest(Vector2(x, z))
+		var dist: float = hit[0]
+		var edge := L.ROAD_WIDTH * 0.5
+		if dist < edge + 3.0:
+			var w := smoothstep(edge + 3.0, edge + 0.4, dist)
+			h = lerpf(h, _branch_profile(hit[1]), w)
+	return h
+
+
+var _br_len := PackedFloat32Array()      # cumulative length at each branch point
+var _br_h0 := 0.0
+var _br_h1 := 0.0
+var _br_s0 := 0.0                          # where the descent to the beach starts
+
+
+## [distance to the branch centre line, arc length of the nearest point].
+func _branch_nearest(p: Vector2) -> Array:
+	var pts := WorldLayout.branch_points()
+	if _br_len.is_empty():
+		_br_len.append(0.0)
+		for i in range(1, pts.size()):
+			_br_len.append(_br_len[i - 1] + pts[i].distance_to(pts[i - 1]))
+		_br_h0 = _base_height(pts[0].x, pts[0].y)
+		# Arrive exactly at deck height, so the causeway ramp is flat: one smooth
+		# descent from the town to the deck, no dip onto the sand and back up.
+		_br_h1 = Places.DECK_Y - 0.03
+		_br_s0 = _br_len[_br_len.size() - 1]
+		for i in pts.size():
+			if pts[i].y > WorldLayout.PROMENADE_Z.y + 1.2:
+				_br_s0 = _br_len[i]
+				break
+	var best := 1e9
+	var best_s := 0.0
+	for i in pts.size() - 1:
+		var a := pts[i]
+		var ab := pts[i + 1] - a
+		var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 1e-6), 0.0, 1.0)
+		var d := p.distance_to(a + ab * t)
+		if d < best:
+			best = d
+			best_s = _br_len[i] + ab.length() * t
+	return [best, best_s]
+
+
+## Road surface height at arc length s: level with the town until past the
+## promenade, then an even ease down to the causeway deck.
+func _branch_profile(s: float) -> float:
+	var total := _br_len[_br_len.size() - 1]
+	if s <= _br_s0:
+		return _br_h0
+	var u := clampf((s - _br_s0) / maxf(total - _br_s0, 0.01), 0.0, 1.0)
+	return lerpf(_br_h0, _br_h1, smoothstep(0.0, 1.0, u))
+
+
+func _base_height(x: float, z: float) -> float:
 	var L := WorldLayout
 	var sd := L.island_sd(x, z)
 	var bw := L.beach_width(z)

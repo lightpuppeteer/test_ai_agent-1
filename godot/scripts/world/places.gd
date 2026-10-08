@@ -1005,6 +1005,10 @@ func _causeway() -> void:
 	for e in [[a, -1.0], [b, 1.0]]:
 		var end: Vector3 = e[0]
 		var sgn: float = e[1]
+		if sgn < 0.0:
+			# The island end needs no ramp: the branch road is graded right up to
+			# the deck (WorldLayout.BRANCH_P), so the car rolls straight on.
+			continue
 		var outward := dir * sgn
 		const RUN := 7.5        # long and gentle, so the car and Marco roll right up
 		var land := end + outward * RUN

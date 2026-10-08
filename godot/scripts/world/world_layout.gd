@@ -60,10 +60,12 @@ static func beach_width(z: float) -> float:
 	return lerpf(6.0, 14.0, smoothstep(-6.0, 26.0, z))
 
 
-## The branch road from the loop's south-east bend down to the causeway ramp
-## (a cubic Bézier: leaves the bend heading south, arrives along the causeway).
-const BRANCH_P := [Vector2(44.97, 1.65), Vector2(45.5, 7.0), Vector2(47.16, 16.92), Vector2(49.6, 22.4)]
-const BRANCH_BOX := Rect2(39.0, -4.0, 17.0, 31.0)
+## The branch road that forks off the south side of the road loop (heading east,
+## like the car leaving its spot) and sweeps down to the start of the causeway
+## deck: a cubic Bézier that leaves along the loop and arrives along the
+## causeway. The terrain grades it down to the deck height (see Terrain).
+const BRANCH_P := [Vector2(27.0, 8.0), Vector2(37.0, 8.6), Vector2(49.35, 21.77), Vector2(53.0, 30.0)]
+const BRANCH_BOX := Rect2(22.0, 3.0, 36.0, 31.0)
 static var _branch := PackedVector2Array()
 
 

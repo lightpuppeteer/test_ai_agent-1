@@ -385,12 +385,13 @@ func _promenade() -> void:
 		x += 12.0
 	x = -42.0
 	while x <= 42.0:
-		if absf(x) > 3.0:
+		if absf(x) > 3.0 and L.road_sd(x, z_bench) > L.ROAD_WIDTH * 0.5 + 1.5:
 			bench(x, z_bench, 0.0)
 		x += 12.0
 	# Planters between the benches (not underneath them).
 	for px in [-36.0, -12.0, 12.0, 36.0]:
-		put("city-kit-suburban/planter", px, z_bench + 0.2, 0.0, 0.8, "box", {}, 1.0)
+		if L.road_sd(px, z_bench + 0.2) > L.ROAD_WIDTH * 0.5 + 1.0:
+			put("city-kit-suburban/planter", px, z_bench + 0.2, 0.0, 0.8, "box", {}, 1.0)
 
 
 # ---------------------------------------------------------------------------

@@ -59,6 +59,8 @@ const VIEWS := {
 	"sign_oasis": {"action": "_act_sign_oasis"},
 	"yoggihouse": {"action": "_act_yoggihouse"},
 	"cwdrive": {"action": "_act_cwdrive"},
+	"branchdrive": {"action": "_act_branchdrive"},
+	"branchback": {"action": "_act_branchback"},
 	"pool": {"action": "_act_pool"},
 	"poolswim": {"action": "_act_poolswim"},
 	"poolout": {"action": "_act_poolout"},
@@ -454,6 +456,104 @@ func _act_cwdrive() -> void:
 		log_line("[drive] t=%d car at %s speed %.1f" % [i, car.global_position, car.speed_kmh()])
 	Input.action_release("move_forward")
 	log_line("[drive] distance to oasis end %.1f" % car.global_position.distance_to(Places.CAUSEWAY_TO))
+
+
+## Drives the car from its spawn along the road loop, down the branch road and
+## onto the causeway with a simple autopilot, logging progress (and getting stuck).
+func _branch_route() -> Array[Vector3]:
+	var route: Array[Vector3] = []
+	var x := -30.0
+	while x < 27.0:
+		route.append(Vector3(x, 0, 8.0))
+		x += 4.0
+	for bp in WorldLayout.branch_points():
+		route.append(Vector3(bp.x, 0, bp.y))
+	var d := Places.CAUSEWAY_TO - Places.CAUSEWAY_FROM
+	d.y = 0
+	d = d.normalized()
+	for k in 8:
+		route.append(Places.CAUSEWAY_FROM + d * (4.0 + k * 4.0))
+	return route
+
+
+## Drives the car from its spawn along the road, down the branch road and onto
+## the causeway with a simple autopilot, logging progress (and getting stuck).
+func _act_branchdrive() -> void:
+	await _drive_route(_branch_route(), 32.0, "out")
+	await _drive_route(_branch_route(), 55.0, "fast")
+
+
+## The same in reverse: from the causeway back up the branch onto the loop.
+func _act_branchback() -> void:
+	var r := _branch_route()
+	r.reverse()
+	await _drive_route(r, 40.0, "back")
+
+
+func _drive_route(route: Array[Vector3], kmh: float, tag: String) -> void:
+	var car: Car = get_tree().current_scene.get_node("Car")
+	var start := route[0]
+	var dir0 := (route[2] - route[0]).normalized()
+	start.y = Game.terrain.height_at(start.x, start.z) + 0.6
+	if start.distance_to(Places.CAUSEWAY_FROM) > 30.0 and tag == "back":
+		start.y = Places.DECK_Y + 0.6
+	if Game.player.car == null:
+		await _place(start + Vector3(dir0.z, 0, -dir0.x) * 2.4, 0.0, 0.0, -18.0, 9.0)
+	car.global_transform = Transform3D(Basis(Vector3.UP, atan2(dir0.x, dir0.z)), start)
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
+	await _frames(10)
+	if Game.player.car == null:
+		await Game.player.enter_car(car)
+	var idx := 0
+	var stuck := 0.0
+	var t := 0.0
+	var next_log := 0.0
+	var max_tilt := 0.0
+	while t < 60.0 and idx < route.size():
+		await get_tree().physics_frame
+		var dt := get_physics_process_delta_time()
+		t += dt
+		var p := car.global_position
+		while idx < route.size() and Vector2(route[idx].x - p.x, route[idx].z - p.z).length() < 5.0:
+			idx += 1
+		if idx >= route.size():
+			break
+		var f := car.global_transform.basis.z
+		f.y = 0
+		f = f.normalized()
+		var to := route[idx] - p
+		to.y = 0
+		to = to.normalized()
+		var ang := atan2(f.cross(to).y, f.dot(to))
+		var steer := clampf(ang * 2.5, -1.0, 1.0)
+		Input.action_release("move_left")
+		Input.action_release("move_right")
+		if steer > 0.02:
+			Input.action_press("move_left", steer)
+		elif steer < -0.02:
+			Input.action_press("move_right", -steer)
+		var spd := car.speed_kmh()
+		if spd < kmh:
+			Input.action_press("move_forward")
+		else:
+			Input.action_release("move_forward")
+		max_tilt = maxf(max_tilt, rad_to_deg(acos(clampf(car.global_transform.basis.y.y, -1.0, 1.0))))
+		stuck = stuck + dt if absf(spd) < 2.0 and t > 3.0 else 0.0
+		if stuck > 2.5:
+			log_line("[branch:%s] STUCK at %s (waypoint %d/%d) t=%.1f" % [tag, p, idx, route.size(), t])
+			break
+		if t >= next_log:
+			next_log += 1.0
+			log_line("[branch:%s] t=%.0f at (%.1f, %.2f, %.1f) speed %.1f wp %d/%d" % [tag, t, p.x, p.y, p.z, spd, idx, route.size()])
+	Input.action_release("move_forward")
+	Input.action_release("move_left")
+	Input.action_release("move_right")
+	log_line("[branch:%s] done t=%.1f waypoint %d/%d at %s, max tilt %.0f deg" % [tag, t, idx, route.size(), car.global_position, max_tilt])
+	cam.current = true
+	cam.global_position = car.to_global(Vector3(0, 4.0, -9.0))
+	cam.look_at(car.global_position + Vector3(0, 1, 0))
+	await _frames(30)
 
 
 func _car_with_both() -> Car:
