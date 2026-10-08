@@ -38,6 +38,9 @@ const VIEWS := {
 	"tpbench": {"action": "_act_tpbench"},
 	"navdump": {"action": "_act_navdump"},
 	"spatest": {"action": "_act_spatest"},
+	"chasetest": {"action": "_act_chasetest"},
+	"carside": {"action": "_act_carside"},
+	"carfront": {"action": "_act_carfront"},
 	"profile": {"action": "_act_profile"},
 	"board": {"pos": Vector3(-2.0, 2.4, -6.8), "look": Vector3(-8.1, 1.7, -2.9)},
 	"sign_pizza": {"pos": Vector3(-26.5, 3.6, -12.5), "look": Vector3(-28, 3.2, -3)},
@@ -49,6 +52,10 @@ const VIEWS := {
 	"sign_oasis": {"action": "_act_sign_oasis"},
 	"yoggihouse": {"action": "_act_yoggihouse"},
 	"cwdrive": {"action": "_act_cwdrive"},
+	"pool": {"action": "_act_pool"},
+	"poolswim": {"action": "_act_poolswim"},
+	"poolout": {"action": "_act_poolout"},
+	"meet": {"action": "_act_meet"},
 }
 
 var cam: Camera3D
@@ -425,6 +432,41 @@ func _act_cwdrive() -> void:
 	log_line("[drive] distance to oasis end %.1f" % car.global_position.distance_to(Places.CAUSEWAY_TO))
 
 
+func _car_with_both() -> Car:
+	var car: Car = get_tree().current_scene.get_node("Car")
+	await _place(car.global_position + car.global_transform.basis.x * 2.4, 0.0, PI * 0.6, -18.0, 9.0)
+	await Game.player.enter_car(car)
+	await _frames(200)
+	return car
+
+
+func _act_carside() -> void:
+	var car := await _car_with_both()
+	cam.current = true
+	cam.global_position = car.to_global(Vector3(4.6, 1.6, 1.2))
+	cam.look_at(car.to_global(Vector3(0, 0.9, -0.1)))
+
+
+func _act_carfront() -> void:
+	var car := await _car_with_both()
+	cam.current = true
+	cam.global_position = car.to_global(Vector3(2.2, 1.9, 5.2))
+	cam.look_at(car.to_global(Vector3(0, 0.8, 0)))
+
+
+func _act_chasetest() -> void:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	var y: Yoggi = Places.spot("yoggi")
+	y.start_chase()
+	for i in 7:
+		var d := Vector3(1, 0, 0).rotated(Vector3.UP, randf() * TAU) * 2.0
+		Game.player.teleport_grounded(y.global_position + d)
+		var start := y.global_position
+		await get_tree().create_timer(4.0).timeout
+		log_line("[chase] %d state=%s moved %.1f m to %s (home %.1f m away) flees=%d" % [i, y.state, start.distance_to(y.global_position), y.global_position, y.global_position.distance_to(y._home), y._flees])
+
+
 func _act_spatest() -> void:
 	while NavBaker.ready_count < 1 + Places.interiors.size():
 		await get_tree().process_frame
@@ -667,4 +709,92 @@ func _act_carkiss() -> void:
 	await _frames(200)
 	Cutscene.run("kiss")
 	Game.camera_rig.distance = 5.0
+	await _frames(30)
+
+
+func _pool_walk_in() -> Pool:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	Game.quests.set_process(false)     # no "meet" texts pulling him away
+	var pool: Pool = get_tree().current_scene.find_child("Pool", true, false)
+	var p: Player = Game.player
+	p.teleport(pool.global_position + Vector3(5.0, Pool.DECK_H + 0.1, 0.0), PI * 0.5)
+	Game.partner.teleport(pool.global_position + Vector3(5.2, Pool.DECK_H + 0.1, 1.3), PI * 0.5)
+	var rig: CameraRig = Game.camera_rig
+	rig.yaw = PI * 0.5
+	rig.pitch = deg_to_rad(-28.0)
+	rig.distance = 8.0
+	rig.snap()
+	await _frames(5)
+	Input.action_press("move_forward")
+	for i in 8:
+		await get_tree().create_timer(0.5).timeout
+		_pool_log(pool, "in t=%.1f" % (i * 0.5 + 0.5))
+	Input.action_release("move_forward")
+	await get_tree().create_timer(1.5).timeout
+	_pool_log(pool, "settled")
+	return pool
+
+
+func _pool_log(pool: Pool, tag: String) -> void:
+	var p: Player = Game.player
+	var m: Person = Game.partner
+	log_line("[pool] %s her %s swim=%s %s | him %s swim=%s %s" % [tag, p.global_position - pool.global_position, p.swimming, p.outfit,
+			m.global_position - pool.global_position, m.swimming, m.outfit])
+
+
+func _act_pool() -> void:
+	await _pool_walk_in()
+	var rig: CameraRig = Game.camera_rig
+	rig.yaw = PI * 0.5 + 0.5
+	rig.pitch = deg_to_rad(-30.0)
+	rig.distance = 11.0
+	await _frames(20)
+
+
+func _act_poolswim() -> void:
+	var pool := await _pool_walk_in()
+	# Swim across, then shoot from the side.
+	var rig: CameraRig = Game.camera_rig
+	Input.action_press("move_forward")
+	await get_tree().create_timer(0.8).timeout
+	_pool_log(pool, "swimming")
+	rig.yaw = PI * 0.5 - 1.2
+	rig.pitch = deg_to_rad(-22.0)
+	rig.distance = 6.0
+	await _frames(4)
+	Input.action_release("move_forward")
+
+
+func _act_poolout() -> void:
+	var pool := await _pool_walk_in()
+	var rig: CameraRig = Game.camera_rig
+	rig.yaw = -PI * 0.5
+	await _frames(3)
+	Input.action_press("move_forward")
+	for i in 8:
+		await get_tree().create_timer(0.5).timeout
+		_pool_log(pool, "out t=%.1f" % (i * 0.5 + 0.5))
+	Input.action_release("move_forward")
+	await get_tree().create_timer(2.5).timeout
+	_pool_log(pool, "after")
+
+
+## Meet steps: he heads off to wait somewhere; check where he ends up.
+func _act_meet() -> void:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	var him := Game.partner as Partner
+	for spot in ["pizza_meet", "cinema_meet", "house_meet", "hotel_meet", "picnic", "beach_towels", "causeway_start", "ending"]:
+		var at: Vector3 = Places.spot(spot).global_position
+		var w := NavBaker.snap(him.get_world_3d(), at)
+		him.wait_at(w, Game.player.global_position)
+		him._pop_to_wait_spot()
+		await get_tree().create_timer(0.6).timeout
+		log_line("[meet] %s at %s snapped %s -> him %s at_spot=%s" % [spot, at, w, him.global_position, him.is_at_wait_spot()])
+	him.release_wait()
+	var at2: Vector3 = Places.spot("pizza_meet").global_position
+	await _place(at2 + Vector3(2.0, 0, 3.0), PI, PI - 0.4, -18.0, 7.0)
+	him.wait_at(NavBaker.snap(him.get_world_3d(), at2), Game.player.global_position)
+	him._pop_to_wait_spot()
 	await _frames(30)

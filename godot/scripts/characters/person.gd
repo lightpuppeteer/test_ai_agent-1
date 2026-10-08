@@ -51,6 +51,12 @@ var _held_anim := ""
 var _accessories := {}
 var _accessory_nodes := {}
 var _lean_tween: Tween
+## Swimming (in the hotel pool): slower, floaty, in swimwear.
+const SWIMWEAR := {"her": "bikini", "him": "beach"}
+var swimming := false
+var _swim_water := 0.0
+var _dry_outfit := ""
+var _swim_splash := 0.0
 
 
 func _ready() -> void:
@@ -186,6 +192,8 @@ func _physics_process(delta: float) -> void:
 		return
 	var target := Vector3(intent.x, 0, intent.z)
 	var speed := run_speed if want_run else walk_speed
+	if swimming:
+		speed = walk_speed * 0.75
 	var hv := Vector3(velocity.x, 0, velocity.z)
 	var a := accel if is_on_floor() else accel * 0.4
 	hv = hv.move_toward(target * speed, a * delta * speed)
@@ -211,6 +219,9 @@ func _physics_process(delta: float) -> void:
 		facing = lerp_angle(facing, atan2(-target.x, -target.z), clampf(turn_speed * delta, 0.0, 1.0))
 	rotation.y = facing
 	_animate_locomotion(hv.length())
+	if swimming:
+		_swim_visual(hv.length(), delta)
+		return
 	# Footsteps: one per stride, louder when running.
 	if footsteps and is_on_floor():
 		_stride += hv.length() * delta
@@ -221,6 +232,13 @@ func _physics_process(delta: float) -> void:
 
 
 func _animate_locomotion(spd: float) -> void:
+	if swimming:
+		# Paddling: the walk cycle reads as a doggy-paddle / crawl stroke.
+		if spd > 0.3:
+			_play("walk", 0.25, 1.5)
+		else:
+			_play("idle", 0.3, 1.4)
+		return
 	if _held_anim != "":
 		_play(_held_anim, 0.25)
 		return
@@ -235,6 +253,54 @@ func _animate_locomotion(spd: float) -> void:
 		_play("walk", 0.2, maxf(spd * walk_anim_rate, 0.5))
 	else:
 		_play("idle", 0.25)
+
+
+## Enter / leave the water. Our two change into swimwear (and back after).
+func set_swimming(on: bool, water_y: float = 0.0) -> void:
+	if on == swimming:
+		return
+	swimming = on
+	var blob := get_node_or_null("BlobShadow") as Decal
+	if blob:
+		blob.visible = not on
+	if on:
+		_swim_water = water_y
+		if SWIMWEAR.has(look) and outfit != SWIMWEAR[look]:
+			_dry_outfit = outfit
+			set_outfit(SWIMWEAR[look])
+		return
+	var tw := create_tween().set_parallel()
+	tw.tween_property(pose_pivot, "position", Vector3.ZERO, 0.35)
+	tw.tween_property(pose_pivot, "rotation", Vector3.ZERO, 0.35)
+	if _dry_outfit != "":
+		var dry := _dry_outfit
+		await get_tree().create_timer(1.6).timeout
+		if not swimming and _dry_outfit == dry:
+			_dry_outfit = ""
+			set_outfit(dry)
+
+
+## The outfit to remember in the save (not the swimwear).
+func dry_outfit() -> String:
+	return _dry_outfit if _dry_outfit != "" else outfit
+
+
+func _swim_visual(spd: float, delta: float) -> void:
+	if pose != "move":
+		return
+	var depth := _swim_water - global_position.y
+	var t := Time.get_ticks_msec() / 1000.0
+	var moving := spd > 0.3
+	var tilt := 0.7 if moving else 0.1
+	var lift := (depth - 0.58) if moving else maxf(depth - 0.66, 0.0)
+	lift += sin(t * (5.0 if moving else 2.2) + float(get_instance_id() % 7)) * (0.04 if moving else 0.03)
+	var k := clampf(delta * 6.0, 0.0, 1.0)
+	pose_pivot.rotation.x = lerpf(pose_pivot.rotation.x, tilt, k)
+	pose_pivot.position.y = lerpf(pose_pivot.position.y, lift, k)
+	_swim_splash -= delta
+	if moving and _swim_splash <= 0.0:
+		_swim_splash = 0.9
+		Sound.play("splash", footstep_db - 6.0, randf_range(1.1, 1.35))
 
 
 ## Walks up steps and kerbs (up to STEP_UP high) instead of bumping into them.

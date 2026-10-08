@@ -29,6 +29,8 @@ func build() -> void:
 	var fl := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(w, d)
+	pm.subdivide_width = int(w)
+	pm.subdivide_depth = int(d)
 	fl.mesh = pm
 	fl.material_override = _floor_material()
 	add_child(fl)

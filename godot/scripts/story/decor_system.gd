@@ -32,6 +32,8 @@ const REQUIRED := {
 const ROOM_NAMES := {"living": "Living room", "bedroom": "Bedroom", "office": "Office"}
 
 var room: Interior
+var boxes: Node3D               # the moving-box pile (gone once everything is unpacked)
+var box_point: Interactable     # "Unpack & decorate" / later "Rearrange the furniture"
 var placed: Array = []          # [{"item", "x", "z", "yaw"}] in room-local coords
 var active := false
 var _order: Array = []
@@ -180,6 +182,7 @@ func load_from(list: Array) -> void:
 			var entry := {"item": e["item"], "x": float(e["x"]), "z": float(e["z"]), "yaw": float(e["yaw"])}
 			placed.append(entry)
 			_nodes.append(_spawn_placed(entry))
+	_update_boxes(false)
 	_rebake_later()
 
 
@@ -219,8 +222,29 @@ func end() -> void:
 	if Game.quests:
 		Game.quests.flags["decor"] = placed
 		Game.quests.save_now()
+	_update_boxes(true)
 	_rebake_nav()
 	changed.emit()
+
+
+## Once every room is furnished the boxes are unpacked: poof, gone.
+func _update_boxes(animate: bool) -> void:
+	if not complete():
+		return
+	if box_point:
+		box_point.prompt = "Rearrange the furniture"
+	if boxes == null or not is_instance_valid(boxes):
+		return
+	var pile := boxes
+	boxes = null
+	if animate:
+		FX.sparkle(pile.get_parent(), pile.to_global(Vector3(4.95, 0.8, 3.6)), Color(1.0, 0.9, 0.6), 30)
+		var tw := pile.create_tween()
+		tw.tween_property(pile, "scale", Vector3(1.0, 0.01, 1.0), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		tw.tween_callback(pile.queue_free)
+		Sound.play("pop", -4.0)
+	else:
+		pile.queue_free()
 
 
 func _rebake_nav() -> void:

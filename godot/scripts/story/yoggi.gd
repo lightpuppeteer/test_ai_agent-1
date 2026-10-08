@@ -105,6 +105,8 @@ func start_chase() -> void:
 	if state == "home":
 		state = "wild"
 		_flees = 0
+		_home = global_position
+		_calm_t = 0.0
 		interactable.prompt = "Catch Yoggi"
 
 
@@ -226,6 +228,12 @@ func _pick_wander_target() -> void:
 ## Walks along a navmesh path to `target` (or the current wander path when
 ## target is INF); returns the velocity, ZERO once arrived.
 func _follow_path(target: Vector3, speed: float) -> Vector3:
+	# Indoors before the room's navmesh exists: wait instead of walking into a table.
+	if state == "house":
+		var region: NavigationRegion3D = NavBaker.regions.get("house")
+		if region == null or region.navigation_mesh == null:
+			_play("idle")
+			return Vector3.ZERO
 	if target != Vector3.INF:
 		var goal := NavBaker.snap(get_world_3d(), target)
 		if _path.is_empty() or _path[_path.size() - 1].distance_to(goal) > 0.6:
@@ -299,24 +307,39 @@ func _spawn_z() -> void:
 func _flee_from(p: Node3D) -> void:
 	_flees += 1
 	Sound.play("meow", -4.0, 1.3)
-	if _flees >= 4:
+	if _flees >= 5:
 		state = "tired"
 		interactable.prompt = "Pick up Yoggi (catnip ready)"
+		_path = PackedVector3Array()
 		_play("idle")
 		if Game.hud:
 			Game.hud.toast("😾 Yoggi is out of breath. Now's your chance!")
 		return
+	# Pick a getaway spot on the walkable map: away from her, through the
+	# neighbourhood (benches, gardens, round the houses), but not too far from home.
 	var away := global_position - p.global_position
 	away.y = 0.0
 	away = away.normalized() if away.length() > 0.01 else Vector3.RIGHT
-	var side := Vector3(-away.z, 0, away.x) * randf_range(-0.8, 0.8)
-	_target = global_position + (away + side).normalized() * 6.0
-	# Stay near the garden.
-	if _target.distance_to(_home) > 9.0:
-		_target = _home + (_target - _home).normalized() * 8.0
-	_timer = 2.5
+	var best := global_position
+	var best_score := -INF
+	for i in 10:
+		var ang := randf_range(-1.3, 1.3)
+		var dir := away.rotated(Vector3.UP, ang)
+		var cand := global_position + dir * randf_range(7.0, 13.0)
+		cand = NavBaker.snap(get_world_3d(), cand)
+		var score := cand.distance_to(p.global_position) - maxf(cand.distance_to(_home) - 22.0, 0.0) * 3.0 + randf() * 2.0
+		if score > best_score:
+			best_score = score
+			best = cand
+	_target = best
+	_path = NavBaker.path(get_world_3d(), global_position, best)
+	if _path.size() < 2:
+		_path = PackedVector3Array([global_position, best])
+	_path_i = 1
+	_timer = 5.0
+	_stuck_t = 0.0
 	if Game.hud:
-		Game.hud.toast(["Yoggi: \"Nope.\"", "Yoggi zooms away!", "Yoggi does a dramatic sideways hop."][(_flees - 1) % 3])
+		Game.hud.toast(["Yoggi: \"Nope.\"", "Yoggi zooms away!", "Yoggi does a dramatic sideways hop.", "Yoggi weaves round a bench like a tiny ninja."][(_flees - 1) % 4])
 
 
 func _physics_process(delta: float) -> void:
@@ -324,21 +347,25 @@ func _physics_process(delta: float) -> void:
 		return
 	var v := Vector3.ZERO
 	if state == "wild":
+		_calm_t -= delta
 		var p: Node3D = Game.player
 		if _timer > 0.0:
 			_timer -= delta
-			var to := _target - global_position
-			to.y = 0.0
-			if to.length() > 0.4:
-				v = to.normalized() * 5.0
-				_facing = atan2(-to.x, -to.z)
-				_play("run")
-			else:
+			v = _follow_path(Vector3.INF, 5.4)
+			if v == Vector3.ZERO:
 				_timer = 0.0
-		elif p and p.global_position.distance_to(global_position) < 2.6:
+			else:
+				_play("run")
+				# Little bounding hops while he runs.
+				model.position.y = absf(sin(Time.get_ticks_msec() * 0.014)) * 0.12
+		elif p and p.global_position.distance_to(global_position) < 2.8 and _calm_t <= 0.0:
+			_calm_t = 0.9
 			_flee_from(p)
 		else:
+			model.position.y = 0.0
 			_play("idle")
+			var tp := p.global_position - global_position if p else Vector3.FORWARD
+			_facing = lerp_angle(_facing, atan2(-tp.x, -tp.z), delta * 4.0)
 	elif state == "house":
 		v = _house_tick(delta)
 		if _on_spot:
@@ -356,5 +383,33 @@ func _physics_process(delta: float) -> void:
 	velocity.x = v.x
 	velocity.z = v.z
 	velocity.y = -0.5 if is_on_floor() else velocity.y - 20.0 * delta
+	var before := global_position
 	move_and_slide()
 	rotation.y = _facing
+	_check_stuck(v, before, delta)
+
+
+## Trying to move but not getting anywhere: re-plan, then just hop past it.
+var _stuck_t := 0.0
+var _calm_t := 0.0
+
+func _check_stuck(v: Vector3, before: Vector3, delta: float) -> void:
+	if v.length() < 0.1:
+		_stuck_t = 0.0
+		return
+	if global_position.distance_to(before) < v.length() * delta * 0.25:
+		_stuck_t += delta
+	else:
+		_stuck_t = maxf(_stuck_t - delta, 0.0)
+	if _stuck_t > 0.7 and _path_i < _path.size():
+		# Re-plan from here (something moved, or we got shoved off the path).
+		var goal := _path[_path.size() - 1]
+		_path = NavBaker.path(get_world_3d(), global_position, goal)
+		_path_i = 1 if _path.size() > 1 else 0
+	if _stuck_t > 1.6 and _path_i < _path.size():
+		# Cats can jump: skip ahead to the next waypoint.
+		_stuck_t = 0.0
+		var hop_to := _path[_path_i] + Vector3(0, 0.1, 0)
+		var tw := create_tween()
+		tw.tween_property(self, "global_position", hop_to, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_path_i += 1

@@ -539,6 +539,17 @@ func refresh_tracker() -> void:
 			l.custom_minimum_size.x = 320
 			vb.add_child(l)
 		tracker.add_child(p)
+	if qm.flags.get("all_done", false) and qm.active_ids().is_empty():
+		var p := PanelContainer.new()
+		p.add_theme_stylebox_override("panel", _panel_style(Color(1, 0.975, 0.91, 0.9), 18, Vector2(16, 10)))
+		var vb := VBoxContainer.new()
+		p.add_child(vb)
+		vb.add_child(_label("♡ Our island", 20, ACCENT.darkened(0.2), _title_font))
+		var l := _label("Wander anywhere together and revisit all your places.", 17, INK)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 320
+		vb.add_child(l)
+		tracker.add_child(p)
 	if quest_log.visible:
 		_refresh_log()
 

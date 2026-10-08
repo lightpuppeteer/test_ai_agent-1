@@ -1,6 +1,6 @@
 extends Node
 ## Headless test: plays every story quest end to end (teleporting around and
-## auto-answering conversations), then checks New Game+.
+## auto-answering conversations), then checks the free-roam ending.
 
 var _log := []
 var _choice_pick := 0
@@ -13,8 +13,8 @@ func _ready() -> void:
 	var guard := 0
 	while guard < 400:
 		guard += 1
-		if int(qm.flags.get("ng_plus", 0)) >= 1 and qm.status("first_date") == "active":
-			print("[story] New Game+ started OK")
+		if qm.flags.get("all_done", false):
+			print("[story] all done -> free roam OK (active: ", qm.active_ids(), ")")
 			break
 		var act: Array = qm.active_ids().filter(func(i): return i != "shells_for_pip")
 		var w := 0.0
@@ -60,7 +60,8 @@ func _tp(pos: Vector3) -> void:
 	if Game.terrain and Game.location == "outside":
 		pos.y = maxf(pos.y, Game.terrain.height_at(pos.x, pos.z) + 0.2)
 	p.teleport(pos)
-	Game.partner.teleport(pos + Vector3(1.2, 0, 0.5))
+	if not (Game.partner as Partner).waiting:
+		Game.partner.teleport(pos + Vector3(1.2, 0, 0.5))
 	await get_tree().create_timer(0.3).timeout
 
 
@@ -80,6 +81,20 @@ func _do_step(qm: QuestManager, id: String, s: Dictionary) -> void:
 		"talk":
 			await _tp(Game.partner.global_position + Vector3(0, 0, 1.2))
 			Game.partner.interactable.interact(p)
+		"meet":
+			if Game.location != "outside":
+				await Places.travel(QuestData.LANDMARKS["spawn"], 0.0, "outside")
+			if p.pose != "move":
+				await p.leave_anchor()
+			var w := 0.0
+			while not qm._meet.get(id, {}).get("armed", false) and w < 15.0:
+				await get_tree().create_timer(0.25).timeout
+				w += 0.25
+			var him := Game.partner as Partner
+			print("[story]   meet armed=", qm._meet.get(id, {}).get("armed", false), " wait spot ", him._wait_pos)
+			him._pop_to_wait_spot()
+			await get_tree().create_timer(0.3).timeout
+			await _tp(him.global_position + Vector3(1.5, 0, 0.0))
 		"go":
 			var t: Vector3 = qm._target(s["to"])
 			if Game.location != "outside":

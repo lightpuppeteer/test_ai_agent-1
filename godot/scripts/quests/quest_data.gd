@@ -9,12 +9,14 @@ extends RefCounted
 ##   intro              lines the giver says when starting
 ##   steps              see below
 ##   finish_title, finish   a memory card shown at the end
-##   new_game_plus      true on the last quest: finishing it makes every quest replayable
+##   free_roam          true on the last quest: afterwards the island is yours to wander
 ##
 ## Step types (each can have "text" for the tracker, "then": [actions] run when it completes):
 ##   go            {"to": "fountain", "radius": 3.0}          landmark, spot or Vector3
 ##   enter         {"place": "pizza", "carrying": "yoggi"}    be inside a place (optionally carrying something)
 ##   talk          {"who": "Pip" | "partner", "lines": [...]}
+##   meet          {"at": "pizza_door", "msg": "📱 …", "lines": [...]}  Marco texts her and waits
+##                 at that place; talk to him there to carry on together
 ##   dialogue      {"tree": "pizza"}                          a branching conversation (StoryData)
 ##   sit_together  {"tag": "pizza_table"} or {"at": "lookout"}  both sitting on the same bench/seats
 ##   lie_together  {"tag": "beach_towel"} or {"at": "beach_towels"}
@@ -48,9 +50,9 @@ const QUESTS := [
 		"id": "first_date",
 		"title": "1 · The First Date",
 		"steps": [
-			{"type": "talk", "who": "partner", "text": "Talk to him",
-				"lines": ["So... there's this little pizza place in town.", "Want to go? It's a date. A real one. With napkins and everything."]},
-			{"type": "go", "to": "pizza_door", "radius": 3.0, "text": "Walk to Pizzeria Amore together"},
+			{"type": "meet", "at": "pizza_meet", "text": "Meet Marco at Pizzeria Amore",
+				"msg": "📱 Marco: There's this little pizza place in town... I'm outside. No pressure. (Some pressure.) 🍕",
+				"lines": ["You came! Okay. Act natural, Marco.", "So... it's a date. A real one. With napkins and everything."]},
 			{"type": "enter", "place": "pizza", "text": "Go inside"},
 			{"type": "sit_together", "tag": "pizza_table", "text": "Sit at the table by the window"},
 			{"type": "dialogue", "tree": "pizza", "then": ["snacks_off"]},
@@ -63,8 +65,9 @@ const QUESTS := [
 		"title": "2 · Sun, Sand & Smooth Talk",
 		"after": "first_date",
 		"steps": [
-			{"type": "talk", "who": "partner", "text": "Talk to him", "lines": ["Beach day? I'll bring the towels. You bring the sunscreen and the patience for my jokes."]},
-			{"type": "go", "to": "beach_towels", "radius": 4.0, "text": "Go to the beach towels"},
+			{"type": "meet", "at": "beach_towels", "text": "Meet Marco by the beach towels",
+				"msg": "📱 Marco: Beach day? I brought the towels. You bring the sunscreen and the patience for my jokes ☀️",
+				"lines": ["Towels: laid out. Sunscreen: applied. Jokes: loaded.", "Lie down with me?"]},
 			{"type": "lie_together", "at": "beach_towels", "text": "Lie down on the towels together"},
 			{"type": "dialogue", "tree": "beach_flirt"},
 			{"type": "car_together", "text": "Head back to the car together (get in the driver's seat)"},
@@ -78,8 +81,9 @@ const QUESTS := [
 		"title": "3 · The Over-Prepared Picnic",
 		"after": "beach_kiss",
 		"steps": [
-			{"type": "talk", "who": "partner", "text": "Talk to him", "lines": ["I packed a picnic! A small one. Light. Very reasonable. Meet me in the garden?"]},
-			{"type": "go", "to": "picnic", "radius": 5.0, "text": "Go to the garden (east of town)"},
+			{"type": "meet", "at": "picnic", "text": "Meet Marco in the garden (east of town)",
+				"msg": "📱 Marco: I packed a picnic! A small one. Light. Very reasonable. I'm in the garden 🧺",
+				"lines": ["You're here! Okay, don't look in the basket yet. It's... modest."]},
 			{"type": "use", "tag": "picnic_basket", "text": "Unpack the picnic basket", "then": ["feast"]},
 			{"type": "dialogue", "tree": "picnic_food"},
 			{"type": "lie_together", "tag": "picnic_blanket", "text": "Lie down on the blanket together"},
@@ -93,8 +97,9 @@ const QUESTS := [
 		"title": "4 · Movie Night",
 		"after": "picnic",
 		"steps": [
-			{"type": "talk", "who": "partner", "text": "Talk to him", "lines": ["Movie night? There are three films on. I promise not to cry. (I will cry.)"]},
-			{"type": "go", "to": "cinema_door", "radius": 3.0, "text": "Go to the cinema"},
+			{"type": "meet", "at": "cinema_meet", "text": "Meet Marco at Cinemas NOS",
+				"msg": "📱 Marco: Movie night? Three films on. I promise not to cry. (I will cry.) 🍿",
+				"lines": ["Tickets: got them. Courage for the horror one: working on it."]},
 			{"type": "enter", "place": "cinema", "text": "Go inside"},
 			{"type": "use", "tag": "popcorn_stand", "text": "Grab popcorn & drinks", "then": ["popcorn"]},
 			{"type": "sit_together", "tag": "cinema_seats", "text": "Find two seats together"},
@@ -108,8 +113,9 @@ const QUESTS := [
 		"title": "5 · Moving In",
 		"after": "cinema",
 		"steps": [
-			{"type": "talk", "who": "partner", "text": "Talk to him", "lines": ["Big news: the keys are ours! Let's go turn that empty house into OUR house."]},
-			{"type": "go", "to": "house_door", "radius": 3.0, "text": "Go to our house (purple roof)"},
+			{"type": "meet", "at": "house_meet", "text": "Meet Marco at our new house (purple roof)",
+				"msg": "📱 Marco: BIG news. The keys are ours. Come to the purple house! 🔑",
+				"lines": ["Welcome home! Let's turn this empty house into OUR house."]},
 			{"type": "enter", "place": "house", "text": "Go inside"},
 			{"type": "decorate", "text": "Decorate: living room, bedroom and office (use the boxes)"},
 			{"type": "dialogue", "tree": "moving_in"},
@@ -126,8 +132,9 @@ const QUESTS := [
 		"title": "6 · Spa Day",
 		"after": "moving_in",
 		"steps": [
-			{"type": "talk", "who": "partner", "text": "Talk to him", "lines": ["I booked us a spa day at the hotel. There will be cucumbers. On our FACES."]},
-			{"type": "go", "to": "hotel_door", "radius": 3.0, "text": "Go to the Hotel & Spa (west of town)"},
+			{"type": "meet", "at": "hotel_meet", "text": "Meet Marco at the Hotel & Spa (west of town)",
+				"msg": "📱 Marco: I booked us a spa day. There will be cucumbers. On our FACES. 🥒",
+				"lines": ["Robes are fluffy, the bed is enormous, and I have cucumbers. Shall we?"]},
 			{"type": "enter", "place": "hotel", "text": "Go inside"},
 			{"type": "lie_together", "tag": "spa_bed", "text": "Flop onto the enormous bed together"},
 			{"type": "dialogue", "tree": "spa", "then": ["cucumbers_off"]},
@@ -140,8 +147,9 @@ const QUESTS := [
 		"title": "7 · The Oasis",
 		"after": "spa",
 		"steps": [
-			{"type": "talk", "who": "partner", "text": "Talk to him", "lines": ["Hey... come with me? There's something I want to show you. Across the sea."]},
-			{"type": "go", "to": "causeway_start", "radius": 5.0, "text": "Go to the road across the sea (east end of the beach)"},
+			{"type": "meet", "at": "causeway_start", "text": "Meet Marco at the road across the sea (east beach)",
+				"msg": "📱 Marco: Come find me where the road goes across the sea? There's something I want to show you. 🌋",
+				"lines": ["Hey. You found me. Come on — it's across the water."]},
 			{"type": "dialogue", "tree": "volcano_road"},
 			{"type": "go", "to": "oasis", "radius": 10.0, "text": "Follow the road to the oasis"},
 			{"type": "use", "tag": "oasis_chest", "text": "Open the chest"},
@@ -154,13 +162,16 @@ const QUESTS := [
 		"id": "anniversary",
 		"title": "8 · Happy Anniversary",
 		"after": "oasis",
-		"new_game_plus": true,
+		"free_roam": true,
 		"steps": [
-			{"type": "talk", "who": "partner", "text": "Talk to him", "lines": ["Meet me on the beach tonight? I've got one more surprise."]},
 			{"type": "time", "preset": "night", "auto": true, "text": "Wait for the night"},
-			{"type": "go", "to": "ending", "radius": 5.0, "text": "Meet him on the beach"},
+			{"type": "meet", "at": "ending", "text": "Meet Marco on the beach",
+				"msg": "📱 Marco: Come to the beach tonight. Look up. ✨",
+				"lines": ["You came. Okay — don't look at me. Look at the sky."]},
 			{"type": "dialogue", "tree": "ending"},
 		],
+		"finish_title": "One year",
+		"finish": ["Happy 1st anniversary, Tatiana. To more together. ♡", "The island is yours now: wander, play, and visit all our places whenever you like."],
 	},
 	# Side quest.
 	{

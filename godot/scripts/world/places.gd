@@ -164,7 +164,10 @@ func _building(x: float, z: float, facing_deg: float, type: String, roof: Color,
 		interior.exit_door.target = outside
 		interior.exit_door.target_yaw = out_yaw
 		interior.exit_door.target_location = "outside"
-	return {"node": n, "door": d, "front": front, "outside": outside, "fwd": fwd}
+	# Where he waits for her when they meet here: beside the path, out of the doorway.
+	var meet := front + fwd * 2.6 + Vector3(fwd.z, 0, -fwd.x) * 1.4
+	meet.y = 0.0
+	return {"node": n, "door": d, "front": front, "outside": outside, "fwd": fwd, "meet": meet}
 
 
 func _interior(id: String, title: String, index: int, size: Vector3, wall: Color, floor_col: Color, tiles: bool = false) -> Interior:
@@ -292,6 +295,7 @@ func _pizza_place() -> void:
 	it.add_seat(Vector3(1.0, 0.46, 0), 90.0)
 	spots["pizza_table"] = it
 	spots["pizza_door"] = info["door"]
+	spots["pizza_meet"] = _marker(info["meet"])
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +305,7 @@ func _pizza_place() -> void:
 var cinema_screen: CinemaScreen
 
 func _cinema() -> void:
-	var room := _interior("cinema", "Cinema Paraíso", 1, Vector3(14, 5.0, 16), Color(0.32, 0.18, 0.24), Color(0.5, 0.18, 0.22))
+	var room := _interior("cinema", "Cinemas NOS", 1, Vector3(14, 5.0, 16), Color(0.32, 0.18, 0.24), Color(0.5, 0.18, 0.22))
 	var info := _building(28.0, 1.0, 180.0, "h", Color(0.25, 0.25, 0.35), 1.35, room, "Enter the cinema")
 	var sign := Props3D.sign_board("cinema", 5.0, true, Color(0.16, 0.12, 0.26))
 	add_child(sign)
@@ -318,12 +322,15 @@ func _cinema() -> void:
 		add_child(bulb)
 		bulb.global_position = sign.global_position + Vector3(-2.4 + i * 0.6, -0.65, -0.1)
 	# Posters by the door.
+	# Posters flat on the facade: two left of the door, one right (within the wall).
+	var bid := "city-kit-suburban/building-type-h"
+	var half_w := Props.model_aabb(bid).size.x * Props.kit_scale(bid) * 1.35 * 0.5
 	var posters := ["poster_horror", "poster_comedy", "poster_drama"]
+	var xs := [-half_w + 1.15, -half_w + 2.45, half_w - 1.15]
 	for i in 3:
-		var poster := Props3D.sign_board(posters[i], 1.15, true, Color(0.85, 0.62, 0.2), 0.08)
+		var poster := Props3D.sign_board(posters[i], 1.05, true, Color(0.85, 0.62, 0.2), 0.08)
 		add_child(poster)
-		var px: float = [-3.2, 3.2, 4.6][i]
-		poster.global_position = info["front"] + Vector3(px, B.ground(28, -2) + 1.55, 0) + info["fwd"] * 0.1
+		poster.global_position = info["front"] + Vector3(xs[i], B.ground(28, -2) + 1.5, 0) + info["fwd"] * 0.06
 		poster.rotation.y = PI
 	# --- inside: a little lobby at the door end, the screen at the far end.
 	cinema_screen = CinemaScreen.new()
@@ -379,6 +386,7 @@ func _cinema() -> void:
 	stand_sign.rotation.y = deg_to_rad(-90)
 	_use_point(room, Vector3(3.6, 1.0, 5.5), "Get popcorn & drinks", "popcorn_stand", 2.2)
 	spots["cinema_door"] = info["door"]
+	spots["cinema_meet"] = _marker(info["meet"])
 	# Dimmer, moodier room light.
 	for c in room.get_children():
 		if c is OmniLight3D:
@@ -394,6 +402,7 @@ func _our_house() -> void:
 	var room := _interior("house", "Our House", 2, Vector3(16, 3.2, 12), Color(0.97, 0.94, 0.88), Color(0.8, 0.62, 0.45))
 	var info := _building(28.0, -23.0, 0.0, "e", Color(0.66, 0.5, 0.9), 1.3, room, "Enter our house")
 	spots["house_door"] = info["door"]
+	spots["house_meet"] = _marker(info["meet"])
 	var mailbox := Props3D.post_sign("our_house", 1.3, 0.75)
 	add_child(mailbox)
 	var mp: Vector3 = info["outside"] + Vector3(2.4, 0, 0)
@@ -414,11 +423,17 @@ func _our_house() -> void:
 	room.add_child(decor)
 	decor.setup(room)
 	Game.world.decor = decor
-	# The pile of moving boxes starts decorating.
+	# The pile of moving boxes starts decorating (they vanish once unpacked).
+	var pile := Node3D.new()
+	pile.name = "MovingBoxes"
+	room.add_child(pile)
 	for i in 4:
-		room.prop("furniture-kit/cardboardBoxClosed", Vector3(4.6 + (i % 2) * 0.7, (i / 2) * 0.6, 3.6), randf() * 20.0, 1.0, "box" if i < 2 else "")
+		var bx := room.prop("furniture-kit/cardboardBoxClosed", Vector3(4.6 + (i % 2) * 0.7, (i / 2) * 0.6, 3.6), randf() * 20.0, 1.0, "box" if i < 2 else "")
+		bx.reparent(pile)
 	var up := _use_point(room, Vector3(4.6, 1.0, 3.0), "Unpack & decorate", "decorate", 2.2)
 	up.used.connect(func(_by: Node, _s: Node3D) -> void: decor.begin())
+	decor.boxes = pile
+	decor.box_point = up
 	spots["house"] = room
 
 
@@ -463,39 +478,35 @@ func _hotel() -> void:
 	sign.global_position = info["front"] + Vector3(0, B.ground(-52, -15) + 3.8, 0) + info["fwd"] * 0.25
 	sign.rotation.y = deg_to_rad(90)
 	spots["hotel_door"] = info["door"]
-	# Pool on a raised deck next to the hotel.
-	var deck_c := Vector3(-55.0, 0, -3.0)
-	var gy := B.ground(deck_c.x, deck_c.z)
-	var deck := Props3D.blocks([
-		Props3D.b(Vector3(11, 0.5, 6.5), Vector3(0, 0.25, 0), Color(0.82, 0.68, 0.5), {"bevel": 0.05}),
-		Props3D.b(Vector3(8, 0.08, 4), Vector3(0, 0.47, 0), Color(0.3, 0.75, 0.9), {"mat": "glossy", "shade": 0.0}),
-	])
-	add_child(deck)
-	deck.global_position = Vector3(deck_c.x, gy - 0.05, deck_c.z)
-	var water := MeshInstance3D.new()
-	var wm := PlaneMesh.new()
-	wm.size = Vector2(7.6, 3.6)
-	water.mesh = wm
-	var wmat := StandardMaterial3D.new()
-	wmat.albedo_color = Color(0.35, 0.8, 0.95, 0.85)
-	wmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	wmat.roughness = 0.05
-	wmat.metallic_specular = 0.8
-	water.material_override = wmat
-	add_child(water)
-	water.global_position = deck.global_position + Vector3(0, 0.52, 0)
-	var body := StaticBody3D.new()
-	body.collision_layer = Game.PHYS_PROPS
-	add_child(body)
-	var cs := CollisionShape3D.new()
-	var bs := BoxShape3D.new()
-	bs.size = Vector3(11, 0.5, 6.5)
-	cs.shape = bs
-	body.add_child(cs)
-	body.global_position = deck.global_position + Vector3(0, 0.25, 0)
-	for i in 3:
-		B.put("furniture-kit/loungeChairRelax", deck_c.x - 3.0 + i * 3.0, deck_c.z + 4.3, 180.0, 1.0, "box", {}, 1.0)
-	B.parasol(deck_c.x + 4.8, deck_c.z + 4.6, [Color(0.3, 0.7, 0.75), Color(1, 1, 1)])
+	spots["hotel_meet"] = _marker(info["meet"])
+	# A proper swimming pool on a raised deck next to the hotel.
+	var deck_c := Vector3(-52.0, 0, -3.0)
+	var base := -INF
+	var low := INF
+	for ix in range(-6, 9):
+		for iz in range(-4, 7):
+			var h := B.ground(deck_c.x + ix, deck_c.z + iz)
+			base = maxf(base, h)
+			low = minf(low, h)
+	var pool := Pool.new()
+	pool.name = "Pool"
+	add_child(pool)
+	pool.global_position = Vector3(deck_c.x, base, deck_c.z)
+	pool.skirt = base - low + 0.4
+	pool.build()
+	if Game.options.has("navdump"):
+		print("[pool] ground ", low, "..", base)
+		for iz in range(-6, 7, 2):
+			var row := ""
+			for ix in range(-9, 10, 2):
+				row += "%5.2f " % B.ground(deck_c.x + ix, deck_c.z + iz)
+			print("[pool] z%+d: %s" % [iz, row])
+	var gy := base + Pool.DECK_H
+	# A parasol in the corner (the loungers are part of the pool).
+	B.parasol(deck_c.x - 5.0, deck_c.z - 2.9, [Color(0.3, 0.7, 0.75), Color(1, 1, 1)])
+	var para := B.get_child(B.get_child_count() - 1) as Node3D
+	if para:
+		para.global_position.y = gy - 0.15
 	B.occupied.append(Vector3(deck_c.x, deck_c.z, 7.0))
 	B.occupied.append(Vector3(-56.0, -15.0, 7.5))
 	spots["pool"] = _marker(deck_c)
@@ -626,6 +637,10 @@ func _causeway() -> void:
 	var deck := MeshInstance3D.new()
 	var dm := BoxMesh.new()
 	dm.size = Vector3(width, 0.4, length)
+	# Plenty of rows along the length so the deck bends with the world curve
+	# (otherwise it stays straight while everything else curves: floaty feet).
+	dm.subdivide_depth = int(length)
+	dm.subdivide_width = 4
 	deck.mesh = dm
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shaders/floor.gdshader")
@@ -648,6 +663,7 @@ func _causeway() -> void:
 		var wall := MeshInstance3D.new()
 		var wbm := BoxMesh.new()
 		wbm.size = Vector3(0.3, 0.45, length)
+		wbm.subdivide_depth = int(length)
 		wall.mesh = wbm
 		wall.material_override = _mat(Color(0.95, 0.93, 0.9))
 		wall.position = Vector3(sx * (width * 0.5 - 0.15), 0.22, 0)
@@ -698,6 +714,8 @@ func _causeway() -> void:
 		var rmesh := MeshInstance3D.new()
 		var rmm := BoxMesh.new()
 		rmm.size = rbs.size
+		rmm.subdivide_depth = 12
+		rmm.subdivide_width = 4
 		rmesh.mesh = rmm
 		rmesh.material_override = mat
 		rnode.add_child(rmesh)

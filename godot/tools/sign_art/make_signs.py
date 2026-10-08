@@ -205,7 +205,7 @@ def cinema():
     rrect(d, (6, 6, W - 6, H - 6), 30, rgb("2b2142"))
     rrect(d, (26, 26, W - 26, H - 26), 22, rgb("3b2d5e"), outline=rgb("f2c14e"), width=5)
     bulbs_border(d, (42, 42, W - 42, H - 42), 34, 7, rgb("ffe58a"))
-    text(d, (W / 2, 112), "CINEMA PARAÍSO", font(80, 700), rgb("ffd45c"), stroke=4, stroke_fill=rgb("8a4b16"),
+    text(d, (W / 2, 112), "CINEMAS NOS", font(84, 700), rgb("ffd45c"), stroke=4, stroke_fill=rgb("8a4b16"),
          shadow=(0, 6, rgb("120c20", 160)))
     rrect(d, (W / 2 - 220, 178, W / 2 + 220, 238), 28, rgb("e2483d"))
     text(d, (W / 2, 208), "NOW SHOWING", font(34, 700), rgb("fff3df"))

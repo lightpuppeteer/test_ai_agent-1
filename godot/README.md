@@ -8,7 +8,7 @@ the repo root for reference). Open this folder in **Godot 4.7** and press **F5**
 | On foot | In the car |
 |---|---|
 | **WASD** walk (camera-relative), **Shift** run, **Space** jump | **W** throttle, **S** brake (hold at a standstill to reverse) |
-| **E** sit on a bench, lie on a towel, drive, talk, remember | **A/D** steer, **Space** handbrake, **E** get out (below ~9 km/h) |
+| **E** sit on a bench, lie on a towel, drive, talk | **A/D** steer, **Space** handbrake, **E** get out (below ~9 km/h) |
 | **Drag** orbit the camera, **Wheel** zoom (trackpad pinch and scroll work too) | |
 | **O** her outfit, **Shift+O** his outfit, **T** time of day | **Q** quest log, **M** music on/off, **H** controls, **F12** photo, **F3** fps |
 
@@ -33,10 +33,10 @@ rumbles on bumps and big moments.
   wide trousers, silver dress, skirt and top, bikini. His: beige tee and cargo shorts, all black, beach shorts.
 - **Partner**: walks beside you, sits next to you, lies on the towel beside yours and rides along in the car.
 - **Villagers**: six animal neighbours (cat, dog, bunny, fox, penguin, koala) wander around and chat when you press E.
-- **Memory spots**: sparkles on the ground. Press E to read a memory; each chapter places its own.
-- **Places with interiors** (doors fade you inside a cut-away "dollhouse" room): Pizzeria Amore, the cinema
+- **Places with interiors** (doors fade you inside a cut-away "dollhouse" room): Pizzeria Amore, Cinemas NOS
   (horror, comedy and drama on rotation, popcorn and drinks), our house (decorate it with the furniture inventory),
-  the Hotel & Spa (pool deck outside, an enormous bed inside). Her place is the pink-roofed house where Yoggi lives.
+  the Hotel & Spa (an enormous bed inside; outside, a real swimming pool: wade in and you both swim, changing
+  into swimwear and back automatically). Her place is the pink-roofed house where Yoggi lives.
 - **The picnic garden** east of town, the **road across the sea** to the oasis island, and the **volcano** behind it.
 - **Mini-map** (bottom left) with a heart for the current goal.
 
@@ -46,13 +46,14 @@ Eight quests in order, each with the dialogue trees from `scripts/story/story_da
 the mouse, ↑/↓ + E, or the D-pad + ✕): the first pizza date, flirting on the beach and the first kiss in the car
 ("boyfriend unlocked"), the picnic, the cinema, moving in (decorate, then catch Yoggi and bring him home), the spa
 day, the road to the oasis and the ring under the erupting volcano, and the anniversary ending with fireworks and
-"Happy 1st Year Anniversary, to more together!". After the ending a **New Game+** starts: every quest can be
-played again, keeping the ring, the decorated house and Yoggi.
+"Happy 1st Year Anniversary, to more together!". Each chapter starts with a little text from Marco: he heads off to
+the place (the pizzeria door, the beach towels, the garden…) and waits there for her. After the ending the island
+is free to wander together, keeping the ring, the decorated house and Yoggi.
 
 ## Writing quests
 
-Quests live in `scripts/quests/quest_data.gd`. The comment at the top lists every step type: go somewhere, talk to
-someone, sit or lie down together, collect and deliver items, wait for a time of day, drive, take a photo, show a
+Quests live in `scripts/quests/quest_data.gd`. The comment at the top lists every step type: go somewhere, meet him
+somewhere (`meet`), talk to someone, sit or lie down together, collect and deliver items, wait for a time of day, drive, take a photo, show a
 memory, or wait. Each quest is a small dictionary. Progress is saved in `user://save.json`; run with
 `-- --reset_save` to start over. A heart marker floats over the current goal, and **Q** opens the quest log.
 

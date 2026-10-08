@@ -25,6 +25,11 @@ var _path := PackedVector3Array()
 var _path_i := 0
 var _path_timer := 0.0
 var _path_goal := Vector3.INF
+## Waiting for her somewhere (a quest "meet"): he heads there and stays put.
+var waiting := false
+var _wait_pos := Vector3.ZERO
+var _wait_look := Vector3.INF
+var _waved := false
 
 
 func _ready() -> void:
@@ -79,6 +84,9 @@ func _think(delta: float) -> void:
 		return
 	if Game.story_lock and _goal == null:
 		return
+	if waiting and _goal == null:
+		_think_wait(delta, p)
+		return
 	if _goal != null:
 		var g: Vector3 = _goal
 		var tg := g - global_position
@@ -111,6 +119,100 @@ func _think(delta: float) -> void:
 		var tp := p.global_position - global_position
 		facing = lerp_angle(facing, atan2(-tp.x, -tp.z), clampf(delta * 3.0, 0.0, 1.0))
 	_last_pos = global_position
+
+
+## Go to `pos` and wait there for her (looking towards `look_at`, if given).
+func wait_at(pos: Vector3, look_at_pos: Vector3 = Vector3.INF) -> void:
+	waiting = true
+	_wait_pos = pos
+	_wait_look = look_at_pos
+	_waved = false
+	_path = PackedVector3Array()
+	_stuck_time = 0.0
+	if pose == "drive" and anchor and anchor.get_parent() is Car:
+		(anchor.get_parent() as Car).passenger = null
+		leave_anchor((anchor.get_parent() as Car).global_position - anchor.get_parent().global_transform.basis.x.normalized() * 2.0, 0.35)
+	elif pose == "sit" or pose == "lie":
+		leave_anchor()
+	# Out of sight and far away: he's simply already there.
+	if not _seen() and global_position.distance_to(pos) > 12.0:
+		_pop_to_wait_spot()
+
+
+func release_wait() -> void:
+	waiting = false
+	_path = PackedVector3Array()
+
+
+func is_at_wait_spot() -> bool:
+	return waiting and Vector2(global_position.x - _wait_pos.x, global_position.z - _wait_pos.z).length() < 2.0
+
+
+func _seen() -> bool:
+	var cam := get_viewport().get_camera_3d()
+	return cam != null and cam.is_position_in_frustum(global_position + Vector3.UP) \
+			and cam.global_position.distance_to(global_position) < 60.0
+
+
+func _pop_to_wait_spot() -> void:
+	var yaw := rotation.y
+	if _wait_look != Vector3.INF:
+		var d := _wait_look - _wait_pos
+		yaw = atan2(-d.x, -d.z)
+	teleport(_wait_pos + Vector3(0, 0.15, 0), yaw)
+	facing = yaw
+	_path = PackedVector3Array()
+	_last_pos = global_position
+
+
+func _think_wait(delta: float, p: Person) -> void:
+	var to := _wait_pos - global_position
+	to.y = 0.0
+	if to.length() > 0.8:
+		# Far and off camera (or hopelessly stuck): he's just already there.
+		if (not _seen() and to.length() > 12.0) or (_stuck_time > 2.6 and not _seen()):
+			_pop_to_wait_spot()
+			_stuck_time = 0.0
+			return
+		intent = _steer(_wait_pos, delta)
+		want_run = to.length() > 4.0
+		_track_stuck_wait(delta)
+		_last_pos = global_position
+		return
+	_stuck_time = 0.0
+	_path = PackedVector3Array()
+	# Waiting: watch for her, wave when she shows up.
+	var dp := p.global_position - global_position
+	dp.y = 0.0
+	var look := _wait_look
+	if dp.length() < 14.0:
+		look = p.global_position
+		if not _waved and dp.length() < 11.0:
+			_waved = true
+			gesture("emote-yes")
+	if look != Vector3.INF:
+		var tl := look - global_position
+		facing = lerp_angle(facing, atan2(-tl.x, -tl.z), clampf(delta * 3.0, 0.0, 1.0))
+	_last_pos = global_position
+
+
+func _track_stuck_wait(delta: float) -> void:
+	var moved := global_position.distance_to(_last_pos)
+	if moved < 0.25 * delta * walk_speed:
+		_stuck_time += delta
+	else:
+		_stuck_time = maxf(_stuck_time - delta * 0.5, 0.0)
+	if _stuck_time > 0.8 and _stuck_time < 1.6:
+		var side := Vector3(-intent.z, 0, intent.x)
+		intent = (intent + side * _repath_side * 0.8).normalized()
+		_path_timer = 0.0
+	elif _stuck_time >= 1.6 and _stuck_time < 1.7 and is_on_floor():
+		want_jump = true
+		_repath_side = -_repath_side
+	elif _stuck_time > 4.0:
+		# Seen, but truly stuck: pop over anyway rather than run on the spot.
+		_pop_to_wait_spot()
+		_stuck_time = 0.0
 
 
 ## Direction to walk towards `goal`: along a navmesh path when there is one,
@@ -183,6 +285,8 @@ func _appear_near(p: Person) -> void:
 ## Mirror the player: sit / lie next to them, hop in the car.
 func _on_player_pose(new_pose: String) -> void:
 	var p: Player = Game.player
+	if waiting:
+		return     # he's waiting for her somewhere else
 	match new_pose:
 		"sit", "lie":
 			var it := p.anchor_owner

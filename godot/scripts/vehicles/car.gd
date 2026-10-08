@@ -38,77 +38,58 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var src := Props.model(model_id)
-	var body_mesh: MeshInstance3D = null
-	var wheel_nodes: Array[MeshInstance3D] = []
-	for c in src.get_children():
-		if c is MeshInstance3D:
-			if String(c.name).begins_with("wheel"):
-				wheel_nodes.append(c)
-			else:
-				body_mesh = c
-	var visual := Node3D.new()
+	# A stylised early-2000s hatchback (see CorsaMesh), roomy enough for two.
+	var meshes := CorsaMesh.build()
+	var visual := MeshInstance3D.new()
 	visual.name = "Visual"
-	visual.scale = Vector3.ONE * _scale
+	visual.mesh = meshes["body"]
 	add_child(visual)
-	if body_mesh:
-		body_mesh.owner = null
-		src.remove_child(body_mesh)
-		visual.add_child(body_mesh)
-		var bb := body_mesh.mesh.get_aabb()
-		bb.position += body_mesh.position
-		_half_width = bb.size.x * 0.5 * _scale
-		# Two boxes: chassis and cabin.
-		var low := CollisionShape3D.new()
-		var lb := BoxShape3D.new()
-		lb.size = Vector3(bb.size.x * 0.96, bb.size.y * 0.45, bb.size.z * 0.98) * _scale
-		low.shape = lb
-		low.position = Vector3(0, (bb.position.y + bb.size.y * 0.3) * _scale, bb.get_center().z * _scale)
-		add_child(low)
-		var top := CollisionShape3D.new()
-		var tb := BoxShape3D.new()
-		tb.size = Vector3(bb.size.x * 0.82, bb.size.y * 0.42, bb.size.z * 0.55) * _scale
-		top.shape = tb
-		top.position = Vector3(0, (bb.position.y + bb.size.y * 0.74) * _scale, (bb.get_center().z - bb.size.z * 0.05) * _scale)
-		add_child(top)
-	for w in wheel_nodes:
-		var vw := VehicleWheel3D.new()
-		vw.name = String(w.name).to_pascal_case()
-		vw.position = w.position * _scale
-		vw.wheel_radius = 0.3 * _scale
-		vw.wheel_rest_length = 0.12
-		vw.suspension_travel = 0.18
-		vw.suspension_stiffness = 48.0
-		vw.suspension_max_force = 9000.0
-		vw.damping_compression = 2.4
-		vw.damping_relaxation = 3.0
-		vw.wheel_friction_slip = 2.6
-		vw.wheel_roll_influence = 0.25
-		var front := w.position.z > 0.0
-		vw.use_as_steering = front
-		vw.use_as_traction = not front
-		if not front:
-			_rear_wheels.append(vw)
-		add_child(vw)
-		w.owner = null
-		src.remove_child(w)
-		w.position = Vector3.ZERO
-		w.scale = Vector3.ONE * _scale
-		vw.add_child(w)
-	src.free()
-	# Lift the wheel anchors so the tyres touch the ground at rest.
-	for c in get_children():
-		if c is VehicleWheel3D:
-			(c as VehicleWheel3D).position.y += 0.08
+	_scale = 1.0
+	_half_width = CorsaMesh.WIDTH * 0.5
+	var low := CollisionShape3D.new()
+	var lb := BoxShape3D.new()
+	lb.size = Vector3(CorsaMesh.WIDTH - 0.04, 0.6, CorsaMesh.LENGTH - 0.05)
+	low.shape = lb
+	low.position = Vector3(0, 0.45, 0)
+	add_child(low)
+	var top := CollisionShape3D.new()
+	var tb := BoxShape3D.new()
+	tb.size = Vector3(CorsaMesh.WIDTH - 0.24, 0.72, 2.3)
+	top.shape = tb
+	top.position = Vector3(0, 1.2, -0.45)
+	add_child(top)
+	for wx in [-CorsaMesh.WHEEL_X, CorsaMesh.WHEEL_X]:
+		for wz in [-CorsaMesh.WHEEL_Z, CorsaMesh.WHEEL_Z]:
+			var vw := VehicleWheel3D.new()
+			vw.name = "Wheel_%s_%s" % ["L" if wx > 0 else "R", "F" if wz > 0 else "B"]
+			vw.position = Vector3(wx, CorsaMesh.WHEEL_R + 0.1, wz)
+			vw.wheel_radius = CorsaMesh.WHEEL_R
+			vw.wheel_rest_length = 0.12
+			vw.suspension_travel = 0.18
+			vw.suspension_stiffness = 48.0
+			vw.suspension_max_force = 9000.0
+			vw.damping_compression = 2.4
+			vw.damping_relaxation = 3.0
+			vw.wheel_friction_slip = 2.6
+			vw.wheel_roll_influence = 0.25
+			var front: bool = wz > 0.0
+			vw.use_as_steering = front
+			vw.use_as_traction = not front
+			if not front:
+				_rear_wheels.append(vw)
+			add_child(vw)
+			var wm := MeshInstance3D.new()
+			wm.mesh = meshes["wheel"]
+			vw.add_child(wm)
 	# Seats (character root goes here; character faces the seat's -Z = car forward).
 	driver_seat = Node3D.new()
 	driver_seat.name = "DriverSeat"
-	driver_seat.position = Vector3(0.28 * _scale, 0.22 * _scale, -0.12 * _scale)
+	driver_seat.position = Vector3(0.47, 0.34, -0.3)
 	driver_seat.rotation.y = PI
 	add_child(driver_seat)
 	passenger_seat = Node3D.new()
 	passenger_seat.name = "PassengerSeat"
-	passenger_seat.position = Vector3(-0.28 * _scale, 0.22 * _scale, -0.12 * _scale)
+	passenger_seat.position = Vector3(-0.47, 0.34, -0.3)
 	passenger_seat.rotation.y = PI
 	add_child(passenger_seat)
 	interactable = Interactable.new()
@@ -122,7 +103,7 @@ func _build() -> void:
 	# Headlights for the evening.
 	for sx in [-0.45, 0.45]:
 		var sl := SpotLight3D.new()
-		sl.position = Vector3(sx * _scale, 0.5 * _scale, 1.25 * _scale)
+		sl.position = Vector3(sx * 1.45, 0.72, CorsaMesh.LENGTH * 0.5)
 		sl.rotation.x = deg_to_rad(-8.0)
 		sl.rotation.y = PI
 		sl.spot_range = 22.0

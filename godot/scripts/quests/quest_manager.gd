@@ -3,7 +3,8 @@ extends Node
 ## Runs the quests from QuestData: starts them (from a villager, from him or on
 ## their own), checks each step, runs conversations, places pick-ups and the
 ## floating heart marker, and saves progress to user://save.json.
-## Finishing the last quest unlocks New Game+: every quest can be played again.
+## "meet" steps send him ahead to wait for her somewhere (with a little text
+## message); finishing the last quest leaves the whole island free to wander.
 
 signal quest_started(id: String)
 signal quest_advanced(id: String, step: int)
@@ -11,6 +12,8 @@ signal quest_completed(id: String)
 signal changed
 
 const SAVE_PATH := "user://save.json"
+## Bumped whenever quest steps change shape, so old saves restart those quests' steps.
+const SAVE_VERSION := 2
 
 ## id -> {"status": "active" | "done", "step": int}
 var states := {}
@@ -24,6 +27,7 @@ var _step_started := {}     # quest id -> step index already "entered"
 var _wait_until := {}       # quest id -> time
 var _used := {}             # tags used since their step started
 var _busy := false          # a quest conversation is running
+var _meet := {}             # quest id -> {"t": entered at, "armed": bool}
 var _marker: Node3D
 var _marker_label: Label3D
 
@@ -107,6 +111,10 @@ func handle_talk(who: String, color: Color = Color(0.98, 0.62, 0.45)) -> bool:
 	for id in active_ids():
 		var s := current_step(id)
 		match s.get("type", ""):
+			"meet":
+				if who == "partner" and _meet.get(id, {}).get("armed", false):
+					await _meet_talk(id, s)
+					return true
 			"talk":
 				if s.get("who", "") == who:
 					await _say(_speaker(who), s.get("lines", ["…"]), color)
@@ -187,6 +195,8 @@ func _enter_step(id: String, s: Dictionary) -> void:
 			_advance(id)
 		"wait":
 			_wait_until[id] = Time.get_ticks_msec() / 1000.0 + float(s.get("seconds", 1.0))
+		"meet":
+			_meet[id] = {"t": Time.get_ticks_msec() / 1000.0, "armed": false}
 
 
 func _check(id: String, s: Dictionary) -> bool:
@@ -227,7 +237,60 @@ func _check(id: String, s: Dictionary) -> bool:
 			return p.pose == "drive" and _near(p.global_position, _target(s.get("to", "")), s.get("radius", 6.0))
 		"wait":
 			return Time.get_ticks_msec() / 1000.0 >= _wait_until.get(id, 0.0)
+		"meet":
+			_check_meet(id, s)
 	return false
+
+
+## Sends him ahead once she's free (a few seconds into the step), then starts
+## the conversation when she reaches him.
+func _check_meet(id: String, s: Dictionary) -> void:
+	var p: Player = Game.player
+	var partner := Game.partner as Partner
+	if partner == null:
+		return
+	var m: Dictionary = _meet.get(id, {})
+	if m.is_empty():
+		m = {"t": Time.get_ticks_msec() / 1000.0, "armed": false}
+		_meet[id] = m
+	if not m["armed"]:
+		var now := Time.get_ticks_msec() / 1000.0
+		if now - float(m["t"]) < float(s.get("delay", 3.5)) or p.pose != "move" \
+				or Game.location != "outside" or Game.story_lock \
+				or (Game.hud and Game.hud.is_dialogue_open()):
+			return
+		var at: Variant = _target(s.get("at", ""))
+		if at == null:
+			return
+		var spot := NavBaker.snap(partner.get_world_3d(), at)
+		if spot.distance_to(at) > 6.0:
+			spot = at
+		m["armed"] = true
+		partner.wait_at(spot, p.global_position)
+		if Game.hud and s.has("msg"):
+			Sound.play_ui("quest_start")
+			Game.hud.toast(s["msg"], 6.0)
+		return
+	if not partner.waiting:
+		partner.wait_at(NavBaker.snap(partner.get_world_3d(), _target(s.get("at", ""))))
+	if p.pose == "move" and partner.is_at_wait_spot() \
+			and p.global_position.distance_to(partner.global_position) < 2.8:
+		_meet_talk(id, s)
+
+
+func _meet_talk(id: String, s: Dictionary) -> void:
+	var partner := Game.partner as Partner
+	_busy = true
+	if partner:
+		var tp: Vector3 = Game.player.global_position - partner.global_position
+		partner.facing = atan2(-tp.x, -tp.z)
+		partner.gesture("emote-yes")
+	await _say(_speaker("partner"), s.get("lines", ["There you are!"]), Color(0.45, 0.66, 0.95))
+	if partner:
+		partner.release_wait()
+	_meet.erase(id)
+	_busy = false
+	_advance(id)
 
 
 func _advance(id: String) -> void:
@@ -267,7 +330,15 @@ func _complete(id: String) -> void:
 	if tracked == id:
 		var act := active_ids()
 		tracked = act[0] if not act.is_empty() else ""
-	if q.get("new_game_plus", false):
+	if q.get("free_roam", false):
+		# The story is done: the island is theirs to wander. Every place stays
+		# open and he just tags along.
+		flags["all_done"] = true
+		if Game.partner is Partner:
+			(Game.partner as Partner).release_wait()
+		_save()
+		changed.emit()
+	elif q.get("new_game_plus", false):
 		new_game_plus()
 	else:
 		_autostart()
@@ -389,6 +460,12 @@ func step_target(id: String) -> Variant:
 			return _target(s.get("to", ""))
 		"talk":
 			return _target(s.get("who", ""))
+		"meet":
+			if inside:
+				return null
+			if _meet.get(id, {}).get("armed", false) and Game.partner:
+				return Game.partner.global_position
+			return _target(s.get("at", ""))
 		"deliver":
 			return _target(s.get("to", "")) if inventory.get(s["item"], 0) >= s.get("count", _collect_count(id, s["item"])) else null
 		"sit_together", "lie_together", "use":
@@ -503,13 +580,14 @@ func _save() -> void:
 	if d:
 		flags["decor"] = d.placed
 	var data := {
+		"version": SAVE_VERSION,
 		"quests": states,
 		"inventory": inventory,
 		"tracked": tracked,
 		"flags": flags,
 		"outfits": {
-			"her": Game.player.outfit if Game.player else "",
-			"him": Game.partner.outfit if Game.partner else "",
+			"her": Game.player.dry_outfit() if Game.player else "",
+			"him": Game.partner.dry_outfit() if Game.partner else "",
 		},
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -523,10 +601,13 @@ func _load() -> void:
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
 	if not (data is Dictionary):
 		return
+	var old := int(data.get("version", 1)) < SAVE_VERSION
 	for id in data.get("quests", {}):
 		if quests.has(id):
 			var st: Dictionary = data["quests"][id]
 			var step := int(st.get("step", 0))
+			if old:
+				step = 0     # the steps changed: start this quest's steps afresh
 			# Resume at the start of a conversation rather than half-way through it.
 			# Carrying something isn't saved: go back to picking it up.
 			var steps: Array = quests[id]["steps"]

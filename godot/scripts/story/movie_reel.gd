@@ -135,7 +135,7 @@ func _idle_card() -> void:
 		var x := 80.0 + i * 135.0
 		draw_rect(Rect2(x - 50, 0, 100, H), Color(0.55, 0.06, 0.12, 0.85))
 		draw_rect(Rect2(x - 50, 0, 18, H), Color(0.7, 0.12, 0.18, 0.9))
-	_text("Cinema Paraíso", Vector2(W * 0.5, H * 0.45), 72, Color(1.0, 0.85, 0.35), Color(0.25, 0.08, 0.1))
+	_text("Cinemas NOS", Vector2(W * 0.5, H * 0.45), 72, Color(1.0, 0.85, 0.35), Color(0.25, 0.08, 0.1))
 	_text("grab a seat · the show starts soon", Vector2(W * 0.5, H * 0.62), 26, Color(1, 0.95, 0.9), Color(0, 0, 0, 0), small_font)
 
 
