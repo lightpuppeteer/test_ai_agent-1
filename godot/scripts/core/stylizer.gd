@@ -100,5 +100,7 @@ static func to_cozy(m: Material) -> Material:
 			sm.set_shader_parameter("use_emission_tex", true)
 	if cutout:
 		sm.set_shader_parameter("scissor", b.alpha_scissor_threshold)
+	if m.has_meta("near_fade"):
+		sm.set_shader_parameter("near_fade", true)
 	_cache[m] = sm
 	return sm

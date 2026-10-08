@@ -11,18 +11,21 @@ const PRESETS := {
 		"zenith": Color(0.33, 0.60, 0.93), "horizon": Color(0.82, 0.92, 0.99), "below": Color(0.55, 0.78, 0.88),
 		"cloud_lit": Color(1, 1, 1), "cloud_shade": Color(0.74, 0.80, 0.92), "cloud_cover": 0.5,
 		"ambient": 0.7, "fog": Color(0.78, 0.88, 0.98), "fog_density": 0.0007, "exposure": 1.0, "lamps": 0.0,
+		"shadow_tint": Color(0.45, 0.5, 0.9, 0.6),
 	},
 	"golden": {
 		"sun_elev": 13.0, "sun_azim": -28.0, "sun_color": Color(1.0, 0.74, 0.50), "sun_energy": 1.15,
 		"zenith": Color(0.40, 0.52, 0.85), "horizon": Color(1.0, 0.78, 0.60), "below": Color(0.78, 0.62, 0.62),
 		"cloud_lit": Color(1.0, 0.86, 0.74), "cloud_shade": Color(0.70, 0.58, 0.72), "cloud_cover": 0.45,
 		"ambient": 0.75, "fog": Color(1.0, 0.82, 0.68), "fog_density": 0.003, "exposure": 1.05, "lamps": 0.7,
+		"shadow_tint": Color(0.62, 0.45, 0.85, 0.55),
 	},
 	"night": {
 		"sun_elev": 38.0, "sun_azim": 150.0, "sun_color": Color(0.62, 0.70, 1.0), "sun_energy": 0.32,
 		"zenith": Color(0.04, 0.07, 0.19), "horizon": Color(0.16, 0.20, 0.36), "below": Color(0.08, 0.12, 0.22),
 		"cloud_lit": Color(0.32, 0.36, 0.52), "cloud_shade": Color(0.12, 0.14, 0.24), "cloud_cover": 0.35,
 		"ambient": 0.55, "fog": Color(0.12, 0.16, 0.30), "fog_density": 0.003, "exposure": 1.25, "lamps": 1.0,
+		"shadow_tint": Color(0.2, 0.26, 0.55, 0.35),
 	},
 }
 const ORDER := ["day", "golden", "night"]
@@ -44,8 +47,10 @@ func _ready() -> void:
 	sun.shadow_enabled = true
 	sun.shadow_bias = 0.03
 	sun.shadow_normal_bias = 1.2
-	sun.shadow_blur = 1.6
-	sun.light_angular_distance = 1.2
+	# Soft, contact-hardening shadows (PCSS) like a sunny storybook afternoon.
+	sun.shadow_blur = 2.2
+	sun.light_angular_distance = 2.2
+	sun.shadow_opacity = 0.92
 	sun.directional_shadow_max_distance = 70.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_blend_splits = true
@@ -149,6 +154,8 @@ func _apply(s: Dictionary) -> void:
 	env.fog_light_color = s["fog"]
 	env.fog_density = s["fog_density"]
 	env.tonemap_exposure = s["exposure"]
+	var tint: Color = s.get("shadow_tint", Color(0.45, 0.5, 0.9, 0.6))
+	RenderingServer.global_shader_parameter_set("shadow_tint", Vector4(tint.r, tint.g, tint.b, tint.a))
 	if Game.world and Game.world.has_method("set_lamps"):
 		Game.world.set_lamps(s["lamps"])
 	for lamp in get_tree().get_nodes_in_group("lamp_lights"):

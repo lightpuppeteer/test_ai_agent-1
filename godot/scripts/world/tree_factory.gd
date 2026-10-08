@@ -19,6 +19,7 @@ static func material() -> Material:
 		m.vertex_color_use_as_albedo = true
 		m.vertex_color_is_srgb = true
 		m.roughness = 0.9
+		m.set_meta("near_fade", true)     # dissolve if the camera slips into a canopy
 		_mat = m
 	return _mat
 

@@ -16,6 +16,7 @@ uniform float emission_energy = 0.0;
 uniform sampler2D emission_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool use_emission_tex = false;
 uniform float scissor = 0.5;
+uniform bool near_fade = false;     // dissolve near the camera (tree canopies)
 
 void vertex() {
 	UV = UV * uv1_scale.xy + uv1_offset.xy;
@@ -23,6 +24,9 @@ void vertex() {
 }
 
 void fragment() {
+	if (near_fade && near_cut(VERTEX, FRAGCOORD.xy)) {
+		discard;
+	}
 	vec4 c = albedo;
 	if (use_tex) {
 		c *= texture(albedo_tex, UV);
@@ -54,5 +58,5 @@ void fragment() {
 }
 
 void light() {
-	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, roughness, DIFFUSE_LIGHT, SPECULAR_LIGHT);
+	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, roughness, DIFFUSE_LIGHT, SPECULAR_LIGHT, LIGHT_IS_DIRECTIONAL);
 }

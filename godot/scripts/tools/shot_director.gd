@@ -64,6 +64,9 @@ const VIEWS := {
 	"arcade_over": {"action": "_act_arcade_over"},
 	"plushshelf": {"action": "_act_plushshelf"},
 	"arcade_back": {"action": "_act_arcade_back"},
+	"promenade": {"pos": Vector3(-13.0, 4.5, 21.0), "look": Vector3(-20.0, 2.0, 14.0)},
+	"loungers": {"action": "_act_loungers"},
+	"probe": {"action": "_act_probe"},
 	"arcade_front": {"pos": Vector3(6.0, 4.0, -14.0), "look": Vector3(0, 3.0, -24)},
 }
 
@@ -964,3 +967,51 @@ func _act_arcade_back() -> void:
 	cam.global_position = it.global_position + Vector3(-1.0, 3.6, 3.2)
 	cam.look_at(it.global_position + Vector3(0.5, 1.2, -4.0))
 	await _frames(10)
+
+
+func _act_loungers() -> void:
+	while NavBaker.ready_count < 1 + Places.interiors.size():
+		await get_tree().process_frame
+	Game.quests.set_process(false)
+	var pool: Pool = get_tree().current_scene.find_child("Pool", true, false)
+	var best: Interactable = null
+	for n in pool.get_children():
+		if n is Interactable and n.kind == "lie":
+			best = n
+			break
+	Game.player.teleport(best.global_position + Vector3(0, 0.1, 1.0))
+	Game.partner.teleport(best.global_position + Vector3(1.0, 0.1, 1.2))
+	await _frames(5)
+	Game.player.use(best)
+	await get_tree().create_timer(5.0).timeout
+	log_line("[loungers] her=%s him=%s" % [Game.player.pose, Game.partner.pose])
+	cam.current = true
+	cam.global_position = best.global_position + Vector3(3.5, 3.0, 4.0)
+	cam.look_at(best.global_position + Vector3(1.2, 0.4, 0))
+
+
+## Debug: what is drawn at a screen point in the golden view (fx, fy in 0..1)?
+func _act_probe() -> void:
+	await _act_golden()
+	await _frames(20)
+	var vc := get_viewport().get_camera_3d()
+	var vs := get_viewport().get_visible_rect().size
+	for frac in [Vector2(0.40, 0.84), Vector2(0.25, 0.70), Vector2(0.6, 0.9)]:
+		var sp := Vector2(vs.x * frac.x, vs.y * frac.y)
+		var o := vc.project_ray_origin(sp)
+		var d := vc.project_ray_normal(sp)
+		log_line("[probe] cam %s ray %s -> %s" % [o, frac, d])
+		var hits := []
+		for n in get_tree().root.find_children("*", "GeometryInstance3D", true, false):
+			var gi := n as GeometryInstance3D
+			if not gi.is_visible_in_tree():
+				continue
+			var bb := gi.global_transform * gi.get_aabb()
+			if bb.size.length() > 400.0:
+				continue
+			if bb.intersects_ray(o, d):
+				var dist := bb.get_center().distance_to(o)
+				hits.append([dist, str(gi.get_path()).right(70), bb.size])
+		hits.sort_custom(func(a, b): return a[0] < b[0])
+		for h in hits.slice(0, 8):
+			log_line("[probe]   %.1f %s %s" % [h[0], h[1], h[2]])

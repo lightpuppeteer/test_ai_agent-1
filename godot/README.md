@@ -12,7 +12,8 @@ the repo root for reference). Open this folder in **Godot 4.7** and press **F5**
 | **Drag** orbit the camera, **Wheel** zoom (trackpad pinch and scroll work too) | |
 | **O** her outfit, **Shift+O** his outfit, **T** time of day | **Q** quest log, **M** music on/off, **H** controls, **F12** photo, **F3** fps |
 
-**N** cycles the mini-map zoom. While decorating the house: **Z/X** pick a piece, **R** rotate, **E** place,
+**N** cycles the mini-map zoom. Run with `-- --kenney` to see the original blocky Kenney props instead of the
+round ones (`scripts/world/round_kit.gd`) and the KayKit furniture (CC0, `assets/kaykit/furniture`). While decorating the house: **Z/X** pick a piece, **R** rotate, **E** place,
 **F** pick a piece back up, **Esc** finish. **Esc** also stands up or leaves the car.
 
 **PlayStation (DualSense) controller**: left stick moves, right stick orbits, **✕** interact, **○** stand up / back,

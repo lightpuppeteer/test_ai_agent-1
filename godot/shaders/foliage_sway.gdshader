@@ -7,6 +7,7 @@ render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, hint_default_white;
 uniform bool use_tex = false;
+uniform bool use_vcol = false;          // vertex colours (sRGB), e.g. the RoundKit plants
 uniform float strength = 1.0;       // overall sway amount (model-local units ~ metres / kit scale)
 uniform float height = 1.0;         // model height (local units)
 uniform float base = 0.0;           // model base (local units)
@@ -51,9 +52,17 @@ void vertex() {
 }
 
 void fragment() {
+	if (near_cut(VERTEX, FRAGCOORD.xy)) {
+		discard;
+	}
 	vec4 c = albedo;
 	if (use_tex) {
 		c *= texture(albedo_tex, UV);
+	}
+	if (use_vcol) {
+		vec3 vc = COLOR.rgb;
+		vc = mix(pow((vc + vec3(0.055)) * (1.0 / 1.055), vec3(2.4)), vc * (1.0 / 12.92), lessThan(vc, vec3(0.04045)));
+		c.rgb *= vc;
 	}
 	if (green_shift > 0.0) {
 		vec3 hsv = rgb2hsv(c.rgb);
@@ -70,5 +79,5 @@ void fragment() {
 }
 
 void light() {
-	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, ROUGHNESS, DIFFUSE_LIGHT, SPECULAR_LIGHT);
+	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, ROUGHNESS, DIFFUSE_LIGHT, SPECULAR_LIGHT, LIGHT_IS_DIRECTIONAL);
 }

@@ -94,6 +94,8 @@ func lamp(x: float, z: float, yaw: float = 0.0) -> Node3D:
 	light.visible = false
 	light.add_to_group("lamp_lights")
 	n.add_child(light)
+	if RoundKit.has("holiday-kit/lantern"):
+		return n     # the round lamp has its own glowing globe
 	var bulb := MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = 0.16
@@ -108,6 +110,13 @@ func lamp(x: float, z: float, yaw: float = 0.0) -> Node3D:
 
 func set_lamps(amount: float) -> void:
 	bulb_material.emission_energy_multiplier = amount * 4.0
+	# The cozy (stylized) copies of the lamp materials glow along.
+	for pair in [[bulb_material, amount * 4.0], [RoundKit.material("glow"), 0.35 + amount * 3.0]]:
+		var src: Material = pair[0]
+		(src as BaseMaterial3D).emission_energy_multiplier = pair[1]
+		var cozy = Stylizer._cache.get(src)
+		if cozy is ShaderMaterial:
+			(cozy as ShaderMaterial).set_shader_parameter("emission_energy", pair[1])
 
 
 ## A bench you can sit on (two seats). yaw: direction the sitter faces (0 = +Z).
@@ -345,7 +354,8 @@ func _promenade() -> void:
 		if absf(x) > 3.0:
 			bench(x, z_bench, 0.0)
 		x += 12.0
-	for px in [-30.0, -6.0, 18.0, 42.0]:
+	# Planters between the benches (not underneath them).
+	for px in [-36.0, -12.0, 12.0, 36.0]:
 		put("city-kit-suburban/planter", px, z_bench + 0.2, 0.0, 0.8, "box", {}, 1.0)
 
 
@@ -594,8 +604,9 @@ func _scatter() -> void:
 			var mmi := MultiMeshInstance3D.new()
 			mmi.name = "Scatter_%s_%d_%d" % [id.get_file(), key.x, key.y]
 			mmi.multimesh = mm
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if id.contains("grass") else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			mmi.visibility_range_end = 60.0 if id.contains("grass") else 110.0
+			# Only bushes cast shadows (tiny plants just add noise, and cost a lot).
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if id.contains("bush") else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mmi.visibility_range_end = 55.0 if id.contains("grass") else (75.0 if id.contains("flower") or id.contains("mushroom") else 110.0)
 			mmi.visibility_range_end_margin = 15.0
 			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 			add_child(mmi)

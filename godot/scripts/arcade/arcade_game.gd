@@ -72,7 +72,11 @@ const DIRS := {
 }
 
 
-static func pressed(what: String) -> bool:
+## The press that started the round (E / ✕ on the title card) must not also
+## count as the first move — e.g. instantly dropping the claw.
+func pressed(what: String) -> bool:
+	if running and t < 0.35:
+		return false
 	for a in DIRS.get(what, []):
 		if Input.is_action_just_pressed(a):
 			return true

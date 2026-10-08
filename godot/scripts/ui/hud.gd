@@ -210,8 +210,9 @@ func _build_toasts() -> void:
 	toast_box = VBoxContainer.new()
 	toast_box.anchor_left = 0.5
 	toast_box.anchor_right = 0.5
-	toast_box.offset_left = -300
-	toast_box.offset_right = 300
+	# Centred and narrow enough to never reach the quest tracker (top right).
+	toast_box.offset_left = -360
+	toast_box.offset_right = 360
 	toast_box.offset_top = 28
 	toast_box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	toast_box.add_theme_constant_override("separation", 8)
@@ -310,6 +311,9 @@ func toast(text: String, duration: float = 2.4) -> void:
 	p.add_theme_stylebox_override("panel", _panel_style(CREAM, 22, Vector2(22, 8)))
 	var l := _label(text, 21, INK, _bold_font)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if _bold_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 21).x > 640.0:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 640.0
 	p.add_child(l)
 	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	p.modulate.a = 0.0

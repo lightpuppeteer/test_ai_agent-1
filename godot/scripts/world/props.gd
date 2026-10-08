@@ -22,7 +22,28 @@ const KIT_SCALE := {
 	"mini-characters": 1.6,
 }
 
+## Rounder, cosier furniture (KayKit Furniture Bits, CC0) standing in for the
+## blocky Kenney pieces. [kaykit model, fit ("height" | "foot"), extra yaw°].
+const KAYKIT := "res://assets/kaykit/furniture/"
+const ALIAS := {
+	"furniture-kit/loungeSofa": ["couch_pillows", "height", 0.0],
+	"furniture-kit/loungeChair": ["armchair_pillows", "height", 0.0],
+	"furniture-kit/bedDouble": ["bed_double_A", "foot", 0.0],
+	"furniture-kit/cabinetBedDrawerTable": ["cabinet_small", "height", 0.0],
+	"furniture-kit/lampRoundFloor": ["lamp_standing", "height", 0.0],
+	"furniture-kit/tableCoffee": ["table_low", "height", 0.0],
+	"furniture-kit/sideTable": ["table_small", "height", 0.0],
+	"furniture-kit/rugRectangle": ["rug_rectangle_stripes_A", "foot", 0.0],
+	"furniture-kit/rugRound": ["rug_oval_A", "foot", 0.0],
+	"furniture-kit/pottedPlant": ["cactus_medium_A", "height", 0.0],
+	"furniture-kit/chair": ["chair_A_wood", "height", 0.0],
+	"furniture-kit/chairDesk": ["chair_A", "height", 0.0],
+	"furniture-kit/tableCloth": ["table_medium", "height", 0.0],
+	"furniture-kit/tableRound": ["table_small", "height", 0.0],
+}
+
 static var _scenes := {}
+static var _alias_xf := {}
 static var _aabbs := {}
 static var _meshes := {}
 static var _recolored := {}
@@ -47,8 +68,38 @@ static func kit_scale(id: String) -> float:
 
 ## Instantiates the raw model (no scale applied).
 static func model(id: String) -> Node3D:
+	if RoundKit.has(id):
+		return RoundKit.model(id)
+	if ALIAS.has(id) and not Game.options.has("kenney"):
+		return _alias_model(id)
 	var ps := scene(id)
 	return ps.instantiate() if ps else Node3D.new()
+
+
+## A KayKit piece sized and centred to take the Kenney piece's place exactly
+## (same bottom centre, same height or footprint), in the Kenney model space.
+static func _alias_model(id: String) -> Node3D:
+	var a: Array = ALIAS[id]
+	var src: PackedScene = load(KAYKIT + a[0] + ".gltf")
+	if not _alias_xf.has(id):
+		var kn := scene(id).instantiate()
+		var kb := node_aabb(kn)
+		kn.free()
+		var yn := src.instantiate()
+		var yb := node_aabb(yn)
+		yn.free()
+		var s := kb.size.y / maxf(yb.size.y, 0.001)
+		if a[1] == "foot":
+			s = maxf(kb.size.x, kb.size.z) / maxf(maxf(yb.size.x, yb.size.z), 0.001)
+		var basis := Basis(Vector3.UP, deg_to_rad(a[2])).scaled(Vector3.ONE * s)
+		var kc := Vector3(kb.get_center().x, kb.position.y, kb.get_center().z)
+		var yc := Vector3(yb.get_center().x, yb.position.y, yb.get_center().z)
+		_alias_xf[id] = Transform3D(basis, kc - basis * yc)
+	var root := Node3D.new()
+	var inst := src.instantiate() as Node3D
+	inst.transform = _alias_xf[id]
+	root.add_child(inst)
+	return root
 
 
 ## Bounding box of a model in its own (unscaled) space.
@@ -273,6 +324,9 @@ static func sway_material(src: Material, strength: float, height: float, base: f
 		if b.albedo_texture:
 			sm.set_shader_parameter("albedo_tex", b.albedo_texture)
 			sm.set_shader_parameter("use_tex", true)
+		if b.vertex_color_use_as_albedo:
+			sm.set_shader_parameter("use_vcol", true)
+			sm.set_shader_parameter("green_shift", 0.0)
 	sm.set_shader_parameter("strength", strength)
 	sm.set_shader_parameter("height", height)
 	sm.set_shader_parameter("base", base)

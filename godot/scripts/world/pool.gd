@@ -54,6 +54,15 @@ func build() -> void:
 		var lat := Vector3(-3.0 + i * 2.6, DECK_H, -(hz + band_z * 0.5))
 		_lounger(parts, lat, [Color(1.0, 0.62, 0.55), Color(0.45, 0.78, 0.82), Color(1.0, 0.85, 0.45)][i])
 		shapes.append([Vector3(1.7, 0.5, 0.66), lat + Vector3(0.1, 0.25, 0)])
+		# Lie down on it (head towards the backrest, -X); he takes the next one.
+		var it := Interactable.new()
+		it.kind = "lie"
+		it.prompt = "Lie on the sun lounger"
+		it.radius = 1.6
+		it.tag = "pool_lounger"
+		add_child(it)
+		it.position = lat + Vector3(0.15, 0.0, 0.0)
+		it.add_seat(Vector3(0, 0.46, 0), 90.0)
 	# Basin: tiled floor and walls, white coping around the edge.
 	var floor_s := Vector3(HOLE.x, 0.5, HOLE.y)
 	var floor_c := Vector3(0, FLOOR_H - 0.25, 0)
@@ -147,8 +156,8 @@ func _lounger(parts: Array, at: Vector3, cushion: Color) -> void:
 	parts.append(Props3D.b(Vector3(1.7, 0.08, 0.66), at + Vector3(0.1, 0.32, 0), frame, {"bevel": 0.03}))
 	parts.append(Props3D.b(Vector3(1.2, 0.09, 0.56), at + Vector3(0.32, 0.4, 0), cushion, {"bevel": 0.04}))
 	# Backrest, tilted up.
-	parts.append(Props3D.b(Vector3(0.62, 0.09, 0.56), at + Vector3(-0.6, 0.56, 0), cushion, {"bevel": 0.04, "rot": Vector3(0, 0, -38)}))
-	parts.append(Props3D.b(Vector3(0.28, 0.1, 0.4), at + Vector3(-0.72, 0.72, 0), Color(1, 1, 1), {"bevel": 0.04, "rot": Vector3(0, 0, -38)}))
+	parts.append(Props3D.b(Vector3(0.62, 0.09, 0.56), at + Vector3(-0.62, 0.5, 0), cushion, {"bevel": 0.04, "rot": Vector3(0, 0, -24)}))
+	parts.append(Props3D.b(Vector3(0.26, 0.1, 0.4), at + Vector3(-0.78, 0.6, 0), Color(1, 1, 1), {"bevel": 0.04, "rot": Vector3(0, 0, -24)}))
 	# Folded towel at the foot.
 	parts.append(Props3D.b(Vector3(0.3, 0.06, 0.5), at + Vector3(0.75, 0.48, 0), cushion.lightened(0.5), {"bevel": 0.02}))
 

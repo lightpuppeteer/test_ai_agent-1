@@ -94,11 +94,16 @@ void fragment() {
 	// --- cliffs: steep faces become layered rock
 	float slope = 1.0 - wnrm.y;
 	float cliff = smoothstep(0.32, 0.5, slope + (n2 - 0.5) * 0.12);
-	// Chunky layered rock: crisp horizontal bands broken by vertical cracks.
-	float band = fract(h * 1.6 + vnoise(xz * 0.35) * 0.6);
-	float strata = mix(0.8, 1.0, smoothstep(0.08, 0.14, band)) * mix(1.0, 0.9, step(0.55, band));
-	float crack = smoothstep(0.455, 0.485, abs(fract(dot(xz, vec2(0.7, 0.7)) * 0.9 + vnoise(vec2(h * 0.8, xz.x * 0.2)) * 0.8) - 0.5));
-	vec3 rock_c = rock * strata * (0.94 + 0.08 * n3) * (1.0 - crack * 0.25);
+	// Soft layered earth (Animal Crossing cliffs): rounded horizontal bands that
+	// get lighter towards the top of each layer, a few gentle cracks.
+	float band = fract(h * 1.3 + vnoise(xz * 0.35) * 0.5);
+	float strata = mix(0.8, 0.98, smoothstep(0.0, 0.85, band)) * mix(1.0, 0.86, smoothstep(0.9, 1.0, band));
+	float crack = smoothstep(0.47, 0.49, abs(fract(dot(xz, vec2(0.7, 0.7)) * 0.9 + vnoise(vec2(h * 0.8, xz.x * 0.2)) * 0.8) - 0.5));
+	vec3 rock_warm = mix(rock, vec3(0.6, 0.44, 0.33), 0.55);
+	vec3 rock_c = rock_warm * strata * (0.95 + 0.07 * n3) * (1.0 - crack * 0.12);
+	// A darker grassy lip where the lawn rolls over the cliff edge.
+	float lip = smoothstep(0.18, 0.3, slope) * (1.0 - smoothstep(0.3, 0.46, slope));
+	col = mix(col, col * 0.78, lip * (1.0 - sand_amt));
 	col = mix(col, rock_c, cliff);
 
 	ALBEDO = col;
@@ -108,5 +113,5 @@ void fragment() {
 }
 
 void light() {
-	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, ROUGHNESS, DIFFUSE_LIGHT, SPECULAR_LIGHT);
+	cozy_light(NORMAL, LIGHT, VIEW, LIGHT_COLOR, ATTENUATION, ROUGHNESS, DIFFUSE_LIGHT, SPECULAR_LIGHT, LIGHT_IS_DIRECTIONAL);
 }
