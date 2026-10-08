@@ -38,6 +38,9 @@ func _ready() -> void:
 	bulb_material.emission = Color(1.0, 0.72, 0.38)
 	bulb_material.emission_energy_multiplier = 0.0
 	var t0 := Time.get_ticks_msec()
+	# Keep the branch road to the causeway clear of props.
+	for bp in L.branch_points():
+		occupied.append(Vector3(bp.x, bp.y, L.ROAD_WIDTH * 0.5 + 0.6))
 	_town()
 	_promenade()
 	_beach()
@@ -377,7 +380,8 @@ func _promenade() -> void:
 	var z_bench := L.PROMENADE_Z.y - 0.5
 	var x := -48.0
 	while x <= 48.0:
-		lamp(x, z_lamp)
+		if L.road_sd(x, z_lamp) > L.ROAD_WIDTH * 0.5 + 0.8:
+			lamp(x, z_lamp)
 		x += 12.0
 	x = -42.0
 	while x <= 42.0:

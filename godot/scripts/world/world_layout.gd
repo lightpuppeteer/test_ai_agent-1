@@ -60,7 +60,39 @@ static func beach_width(z: float) -> float:
 	return lerpf(6.0, 14.0, smoothstep(-6.0, 26.0, z))
 
 
+## The branch road from the loop's south-east bend down to the causeway ramp
+## (a cubic Bézier: leaves the bend heading south, arrives along the causeway).
+const BRANCH_P := [Vector2(44.97, 1.65), Vector2(45.5, 7.0), Vector2(47.16, 16.92), Vector2(49.6, 22.4)]
+const BRANCH_BOX := Rect2(39.0, -4.0, 17.0, 31.0)
+static var _branch := PackedVector2Array()
+
+
+## Points along the branch road's centre line.
+static func branch_points() -> PackedVector2Array:
+	if _branch.is_empty():
+		var p0: Vector2 = BRANCH_P[0]
+		var p1: Vector2 = BRANCH_P[1]
+		var p2: Vector2 = BRANCH_P[2]
+		var p3: Vector2 = BRANCH_P[3]
+		for i in 21:
+			var t := i / 20.0
+			var u := 1.0 - t
+			_branch.append(p0 * u * u * u + p1 * 3.0 * u * u * t + p2 * 3.0 * u * t * t + p3 * t * t * t)
+	return _branch
+
+
 static func road_sd(x: float, z: float) -> float:
+	## Distance from the nearest road centre line (the loop or the branch).
+	var d := loop_sd(x, z)
+	if BRANCH_BOX.has_point(Vector2(x, z)):
+		var pts := branch_points()
+		var p := Vector2(x, z)
+		for i in pts.size() - 1:
+			d = minf(d, _seg_dist(p, pts[i], pts[i + 1]))
+	return d
+
+
+static func loop_sd(x: float, z: float) -> float:
 	## Distance from the road loop's centre line.
 	var p := Vector2(x, z) - ROAD_CENTER
 	var q := Vector2(absf(p.x), absf(p.y)) - ROAD_HALF + Vector2(ROAD_CORNER, ROAD_CORNER)

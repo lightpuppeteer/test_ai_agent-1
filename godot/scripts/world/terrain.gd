@@ -134,7 +134,8 @@ func _build_textures() -> void:
 			if x > L.PROMENADE_X.x and x < L.PROMENADE_X.y:
 				prom = smoothstep(L.PROMENADE_Z.x - 0.3, L.PROMENADE_Z.x + 0.3, z) * smoothstep(L.PROMENADE_Z.y + 0.3, L.PROMENADE_Z.y - 0.3, z)
 			var road := smoothstep(L.ROAD_WIDTH * 0.5 + 0.3, L.ROAD_WIDTH * 0.5 - 0.3, L.road_sd(x, z))
-			img.set_pixel(px, py, Color(path, maxf(plaza, prom), road, 0.0))
+			# Where the branch road crosses the promenade, the road wins.
+			img.set_pixel(px, py, Color(path * (1.0 - road), maxf(plaza, prom) * (1.0 - road), road, 0.0))
 	splat_image = img
 	splat_texture = ImageTexture.create_from_image(img)
 

@@ -65,14 +65,17 @@ static func make(type: String, roof: Color, mul: float) -> Node3D:
 			b.blob(Vector3(cx + w * 0.28, top + (sz.y - top) * 0.55 + 0.68, cz - d * 0.12), Vector3(0.36, 0.14, 0.36), roof.darkened(0.1), roof.darkened(0.3), 10, 5)
 		"cap":
 			# Mushroom-cap roof: a big soft dome with a lip, spotted like a toadstool.
-			b.blob(Vector3(cx, top - 0.05, cz), Vector3(w * 0.62, (sz.y - top) * 1.25 + 0.35, d * 0.64), roof.lightened(0.08), roof.darkened(0.12), 22, 12, 0.03, Basis(), "matte", true)
+			# Raised so its lip clears the door and the window tops.
+			var cap_c := Vector3(cx, top + 0.4, cz)
+			var cap_r := Vector3(w * 0.62, (sz.y - top) * 1.05 + 0.3, d * 0.64)
+			b.blob(cap_c, cap_r, roof.lightened(0.08), roof.darkened(0.12), 26, 14, 0.02, Basis(), "matte", true)
 			var rng := RandomNumberGenerator.new()
 			rng.seed = int(roof.g * 1000)
 			for i in 7:
 				var a := TAU * i / 7.0 + rng.randf() * 0.4
 				var e := rng.randf_range(0.35, 0.95)
 				var dir := Vector3(cos(a) * sin(e), cos(e), sin(a) * sin(e))
-				var p := Vector3(cx, top - 0.05, cz) + Vector3(dir.x * w * 0.62, dir.y * ((sz.y - top) * 1.25 + 0.35), dir.z * d * 0.64)
+				var p := cap_c + Vector3(dir.x * cap_r.x, dir.y * cap_r.y, dir.z * cap_r.z) * 1.02
 				b.disc(p, dir, Vector3.RIGHT, 0.32, 0.28, Color(1, 0.98, 0.94), Color(0.96, 0.93, 0.88), 10, 0.05, "matte")
 		"flat":
 			# A rounded parapet and a little rooftop garden.
@@ -117,6 +120,8 @@ static func make(type: String, roof: Color, mul: float) -> Node3D:
 	root.name = "Cottage"
 	root.add_child(mi)
 	root.set_meta("aabb", AABB(mn, sz))
+	# Height and forward reach of the front eave (for shop signs).
+	root.set_meta("eave", Vector2(top, fz + (0.77 if style == "gable" else 0.3)))
 	return root
 
 

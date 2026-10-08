@@ -222,8 +222,21 @@ func _pizza_place() -> void:
 	var info := _building(-28.0, 1.0, 180.0, "c", Color(0.92, 0.3, 0.28), 1.3, room, "Enter Pizzeria Amore")
 	var sign := Props3D.sign_board("pizzeria", 5.0)
 	add_child(sign)
-	sign.global_position = info["front"] + Vector3(0, B.ground(-28, -2) + 3.4, 0) + info["fwd"] * 0.25
 	sign.rotation.y = PI
+	var house: Node3D = info["node"]
+	if house.has_meta("eave"):
+		# Stand the sign on the front eave, clear of the roof and the upper windows,
+		# on two little posts.
+		var ev: Vector2 = house.get_meta("eave")
+		var sh: float = (sign.get_meta("size") as Vector2).y
+		var base := house.global_transform * Vector3(0, ev.x, ev.y + 0.15)
+		sign.global_position = base + Vector3(0, 0.12 + sh * 0.5, 0)
+		for sx in [-1.6, 1.6]:
+			var post := Props3D.blocks([Props3D.b(Vector3(0.12, 0.7, 0.12), Vector3(0, 0, 0), Color(0.5, 0.33, 0.2), {"bevel": 0.03})])
+			add_child(post)
+			post.global_position = base + Vector3(sx, 0.1, 0) - (info["fwd"] as Vector3) * 0.12
+	else:
+		sign.global_position = info["front"] + Vector3(0, B.ground(-28, -2) + 3.4, 0) + info["fwd"] * 0.25
 	# Striped awning over the door.
 	var aw := MeshInstance3D.new()
 	var bm := BoxMesh.new()
@@ -303,6 +316,43 @@ func _pizza_place() -> void:
 # Cinema
 # ---------------------------------------------------------------------------
 
+## A sandwich board: two framed posters leaning together in a triangle, on the
+## ground at `at`, the front poster facing `yaw` (radians, 0 = +Z).
+func _aframe(art: String, at: Vector3, yaw: float) -> void:
+	var root := Node3D.new()
+	root.name = "AFrame_" + art
+	add_child(root)
+	root.global_position = Vector3(at.x, B.ground(at.x, at.z), at.z)
+	root.rotation.y = yaw
+	const W := 0.9
+	const TILT := 14.0
+	var wood := Color(0.55, 0.36, 0.22)
+	for k in 2:
+		var board := Props3D.sign_board(art, W, true, Color(0.85, 0.62, 0.2), 0.06)
+		var h: float = (board.get_meta("size") as Vector2).y
+		var leg := Node3D.new()
+		root.add_child(leg)
+		# Hinge at the top; each board hangs from it, tilted outwards.
+		leg.position = Vector3(0, 0.02 + (h + 0.17) * cos(deg_to_rad(TILT)), 0)
+		leg.rotation = Vector3(-deg_to_rad(TILT), PI * k, 0)
+		leg.add_child(board)
+		board.position = Vector3(0, -(h * 0.5 + 0.05), 0.04)
+		# Wooden frame rails and feet.
+		for sx in [-1.0, 1.0]:
+			leg.add_child(Props3D.blocks([Props3D.b(Vector3(0.07, h + 0.24, 0.06), Vector3(sx * (W * 0.5 + 0.03), -(h * 0.5 + 0.05), 0.0), wood, {"bevel": 0.02})]))
+		leg.add_child(Props3D.blocks([Props3D.b(Vector3(W + 0.14, 0.07, 0.06), Vector3(0, 0.0, 0.0), wood, {"bevel": 0.02})]))
+	var body := StaticBody3D.new()
+	body.collision_layer = Game.PHYS_PROPS
+	root.add_child(body)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(W + 0.2, 1.5, 0.9)
+	cs.shape = bs
+	cs.position.y = 0.75
+	body.add_child(cs)
+	B.occupied.append(Vector3(at.x, at.z, 0.8))
+
+
 var cinema_screen: CinemaScreen
 
 func _cinema() -> void:
@@ -322,17 +372,14 @@ func _cinema() -> void:
 		bulb.material_override = B.bulb_material
 		add_child(bulb)
 		bulb.global_position = sign.global_position + Vector3(-2.4 + i * 0.6, -0.65, -0.1)
-	# Posters by the door.
-	# Posters flat on the facade: two left of the door, one right (within the wall).
-	var bid := "city-kit-suburban/building-type-h"
-	var half_w := Props.model_aabb(bid).size.x * Props.kit_scale(bid) * 1.35 * 0.5
-	var posters := ["poster_horror", "poster_comedy", "poster_drama"]
-	var xs := [-half_w + 1.15, -half_w + 2.45, half_w - 1.15]
-	for i in 3:
-		var poster := Props3D.sign_board(posters[i], 1.05, true, Color(0.85, 0.62, 0.2), 0.08)
-		add_child(poster)
-		poster.global_position = info["front"] + Vector3(xs[i], B.ground(28, -2) + 1.5, 0) + info["fwd"] * 0.06
-		poster.rotation.y = PI
+	# Movie posters on A-frame boards standing on the ground either side of the
+	# entrance (two on the left, one on the right), angled towards the path.
+	var fwd: Vector3 = info["fwd"]
+	var side := Vector3(-fwd.z, 0, fwd.x)
+	var posters := [["poster_horror", -3.0, -18.0], ["poster_comedy", -4.5, -24.0], ["poster_drama", 3.2, 20.0]]
+	for pd in posters:
+		var at: Vector3 = info["front"] + fwd * 1.9 + side * float(pd[1])
+		_aframe(pd[0], at, atan2(fwd.x, fwd.z) + deg_to_rad(float(pd[2])))
 	# --- inside: a little lobby at the door end, the screen at the far end.
 	cinema_screen = CinemaScreen.new()
 	room.add_child(cinema_screen)

@@ -144,7 +144,14 @@ class MB:
 
 	func tri(mat: String, a: Array, b: Array, c: Array) -> void:
 		var s := _st(mat)
-		for v in [a, b, c]:
+		# Godot's front faces wind clockwise seen from outside: orient every
+		# triangle by its normals so single-sided materials never show the inside.
+		var pa: Vector3 = a[0]
+		var fn := ((b[0] as Vector3) - pa).cross((c[0] as Vector3) - pa)
+		var order := [a, b, c]
+		if fn.dot((a[1] as Vector3) + (b[1] as Vector3) + (c[1] as Vector3)) > 0.0:
+			order = [a, c, b]
+		for v in order:
 			s.set_color(v[2])
 			s.set_normal(v[1])
 			s.add_vertex(v[0] * k)
