@@ -87,8 +87,11 @@ Chapters live in `scripts/chapters/`. Copy `shore_chapter.gd`, then set a title,
   an arched door with a porch light and potted shrubs.
 - **Chibi heads**: you two have round superellipsoid heads with the face painted onto the curve, and hair and
   beards as soft shells with smooth openings (`Avatar._add_ball`, looks in `avatar_looks.gd`).
-- **Grass carpet** (`scripts/world/grass_field.gd`, `shaders/grass_field.gdshader`): short Animal Crossing–style
-  tufts over every lawn that sway in the wind and bend away from whoever walks through them.
+- **Grass carpet** (`scripts/world/grass_field.gd`, `shaders/grass_field.gdshader`): a thick Animal Crossing–style
+  lawn of 1 m turfs, drawn out to 100 m in three detail levels that hand over smoothly; the blades sway in the
+  wind and bend away from whoever walks through them.
+- **Performance**: full screen with the 3D world at 1080 lines or more (F11 toggles a window), a 60 fps cap, and
+  a quality governor (`scripts/core/quality_governor.gd`) that drops the subtlest effects if the GPU heats up.
 - **Toon water** (`shaders/ocean.gdshader`): banded shallow/deep colours, Voronoi light ripples and foam, with
   depth-based absorption of what is under the surface.
 - **Lighting**: soft PCSS sun shadows tinted lavender, SSAO and glow. Screen-space indirect light (as in Godot's

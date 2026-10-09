@@ -17,8 +17,8 @@ uniform sampler2D height_tex : filter_linear, repeat_disable;
 uniform vec3 height_info;                  // terrain size (m), vertices per side
 uniform sampler2D splat : filter_linear, repeat_disable;
 uniform vec4 splat_rect;                   // x0, z0, width, depth
-uniform float fade_end = 29.0;
-uniform float fade_len = 9.0;
+uniform vec2 lod_in = vec2(-2.0, -1.0);    // this detail level grows in over [x, y] metres
+uniform vec2 lod_out = vec2(24.0, 30.0);   // … and shrinks out over [x, y]
 
 uniform vec3 root_col : source_color = vec3(0.27, 0.53, 0.22);
 uniform vec3 tip_col : source_color = vec3(0.55, 0.80, 0.33);
@@ -60,9 +60,9 @@ void vertex() {
 	float bare = max(max(sp.r, sp.g), max(sp.b, sp.a));
 	float gy = ground_at(root.xz);
 	float keep = (1.0 - smoothstep(0.25, 0.5, bare)) * smoothstep(1.2, 1.45, gy);
-	// Shrink away near the end of the draw distance (no popping).
+	// Hand over smoothly between detail levels (and fade out at the far edge).
 	float cam_d = length(root - INV_VIEW_MATRIX[3].xyz);
-	keep *= 1.0 - smoothstep(fade_end - fade_len, fade_end, cam_d);
+	keep *= smoothstep(lod_in.x, lod_in.y, cam_d) * (1.0 - smoothstep(lod_out.x, lod_out.y, cam_d));
 	// Blade shape relative to its root, scaled by keep; root on the ground.
 	vec3 rel = (VERTEX - root_local) * keep;
 	VERTEX = root_local + rel;

@@ -3,7 +3,7 @@ extends Node
 ## Keeps the game smooth on laptops that heat up and slow their GPU down after a
 ## while: it watches how long the GPU takes per frame and, when it gets close
 ## to the 60 fps budget, quietly drops the least noticeable extras one step at
-## a time (ambient occlusion, then glow and the far grass, then far shadows).
+## a time (ambient occlusion, then glow and the furthest grass, then far shadows).
 ## When there is room again, it brings them back. The 3D resolution never goes
 ## below what Game set up. `--quality=high` turns it off.
 
@@ -49,9 +49,7 @@ func _apply() -> void:
 		return
 	atm.env.ssao_enabled = level < 1
 	atm.env.glow_enabled = level < 2
-	var gm := GrassField._mat
-	if gm:
-		gm.set_shader_parameter("fade_end", (GrassField.RANGE - 1.0) if level < 2 else 18.0)
+	GrassField.set_far_limit(GrassField.RANGE if level < 2 else 50.0)
 	if atm.sun:
 		atm.sun.directional_shadow_max_distance = 40.0 if level < 3 else 26.0
 	print("[quality] GPU budget level %d" % level)
