@@ -183,7 +183,7 @@ static func _add_block(st: SurfaceTool, p: Dictionary) -> void:
 		# Soft, rounded blocks with smooth normals (the cozy look).
 		var frac: float = p.get("round", 0.62)     # corner radius as a share of the smallest half-size
 		var r := minf(maxf(c * 2.0, minf(h.x, minf(h.y, h.z)) * frac), minf(h.x, minf(h.y, h.z)) * 0.95)
-		var rb := _round_box(h, r)
+		var rb := _round_box(h, r, 2)
 		var pos: PackedVector3Array = rb[0]
 		var nrm: PackedVector3Array = rb[1]
 		for i in pos.size():

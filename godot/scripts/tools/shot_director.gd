@@ -35,6 +35,9 @@ const VIEWS := {
 	"cats": {"action": "_act_cats"},
 	"villagers": {"action": "_act_villagers"},
 	"perf": {"action": "_act_perf"},
+	"perfq": {"action": "_act_perfq"},
+	"perfx": {"action": "_act_perfx"},
+	"tris": {"action": "_act_tris"},
 	"tpbench": {"action": "_act_tpbench"},
 	"navdump": {"action": "_act_navdump"},
 	"spatest": {"action": "_act_spatest"},
@@ -53,6 +56,9 @@ const VIEWS := {
 	"cottage_pizza": {"pos": Vector3(-19.0, 5.0, 12.0), "look": Vector3(-28.0, 3.0, 1.0)},
 	"pizza_front": {"pos": Vector3(-24.0, 4.0, -11.0), "look": Vector3(-28.0, 3.6, 0.0)},
 	"cinema_front": {"pos": Vector3(24.0, 3.2, -10.5), "look": Vector3(28.0, 1.2, -1.0)},
+	"cinema_sign": {"pos": Vector3(25.0, 6.0, -13.0), "look": Vector3(28.0, 3.6, -1.0)},
+	"hotel_front": {"pos": Vector3(-42.0, 6.0, -10.0), "look": Vector3(-56.0, 3.8, -15.0)},
+	"arcade_sign": {"pos": Vector3(3.0, 6.0, -12.0), "look": Vector3(0.0, 4.0, -24.0)},
 	"branch": {"pos": Vector3(34.0, 13.0, -8.0), "look": Vector3(47.0, 1.5, 14.0)},
 	"branch_low": {"pos": Vector3(40.0, 4.0, 0.0), "look": Vector3(49.0, 1.5, 20.0)},
 	"sign_her": {"pos": Vector3(-23.0, 2.2, -14.0), "look": Vector3(-24.5, 1.2, -18)},
@@ -295,20 +301,211 @@ func _act_golden() -> void:
 
 
 func _perf_sample(label: String, frames: int = 90) -> void:
+	# Uncapped (no vsync) so the numbers show the real cost, plus GPU/CPU split.
+	var vp := get_viewport().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(vp, true)
+	var vs := DisplayServer.window_get_vsync_mode()
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	var max_fps := Engine.max_fps
+	Engine.max_fps = 0
+	await _frames(20)
 	var worst := 0.0
 	var total := 0.0
+	var gpu := 0.0
+	var rcpu := 0.0
+	var proc := 0.0
+	var phys := 0.0
 	for i in frames:
 		var t0 := Time.get_ticks_usec()
 		await get_tree().process_frame
 		var dt := (Time.get_ticks_usec() - t0) / 1000.0
 		worst = maxf(worst, dt)
 		total += dt
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp)
+		rcpu += RenderingServer.viewport_get_measured_render_time_cpu(vp)
+		proc += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	DisplayServer.window_set_vsync_mode(vs)
+	Engine.max_fps = max_fps
 	var rs := RenderingServer
-	log_line("[perf] %-14s avg %.1f ms  worst %.1f ms  draws %d  objs %d  prims %dk  fps %d" % [label, total / frames, worst,
+	log_line("[perf] %-14s avg %.1f ms  worst %.1f  gpu %.1f  render-cpu %.1f  process %.1f  physics %.1f  draws %d  objs %d  prims %dk  res %s" % [label, total / frames, worst,
+		gpu / frames, rcpu / frames, proc / frames, phys / frames,
 		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
 		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000,
-		Engine.get_frames_per_second()])
+		get_viewport().get_texture().get_size()])
+	var vp0 := get_tree().root
+	var subs := []
+	for sv in get_tree().root.find_children("*", "SubViewport", true, false):
+		subs.append("%s %s" % [sv.name, (sv as SubViewport).size])
+	log_line("[perf]   window %s  root size %s  3d scale %.2f  subviewports %s" % [DisplayServer.window_get_size(), vp0.size, vp0.scaling_3d_scale, subs])
+	log_line("[perf]   vmem %d MB  tex %d MB  buf %d MB  nodes %d  objects %d  resources %d  orphans %d" % [
+		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576,
+		Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576,
+		Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED) / 1048576,
+		Performance.get_monitor(Performance.OBJECT_NODE_COUNT), Performance.get_monitor(Performance.OBJECT_COUNT),
+		Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT), Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)])
+
+
+## Cost breakdown at the plaza and the east meadow: switches features off one
+## at a time and samples each.
+func _act_perfq() -> void:
+	var we: WorldEnvironment = get_tree().root.find_children("*", "WorldEnvironment", true, false)[0]
+	var env := we.environment
+	var sun: DirectionalLight3D = get_tree().root.find_children("*", "DirectionalLight3D", true, false)[0]
+	var vp := get_viewport()
+	var grass := get_tree().root.find_children("Grass_*", "MultiMeshInstance3D", true, false)
+	var mms := get_tree().root.find_children("*", "MultiMeshInstance3D", true, false)
+	for spot in [[Vector3(0, 0, -2), PI, "plaza"], [Vector3(30, 0, -30), 0.0, "east"]]:
+		await _place(spot[0], spot[1], spot[1], -28.0, 10.0)
+		await _frames(30)
+		var tag: String = spot[2]
+		await _perf_sample(tag + " base")
+		for g in grass:
+			g.visible = false
+		await _perf_sample(tag + " -grass")
+		for g in mms:
+			g.visible = false
+		await _perf_sample(tag + " -all mm")
+		for g in mms:
+			g.visible = true
+		env.ssao_enabled = false
+		await _perf_sample(tag + " -ssao")
+		env.ssao_enabled = true
+		var ms := vp.msaa_3d
+		vp.msaa_3d = Viewport.MSAA_DISABLED
+		await _perf_sample(tag + " -msaa")
+		vp.msaa_3d = ms
+		sun.shadow_enabled = false
+		await _perf_sample(tag + " -shadows")
+		sun.shadow_enabled = true
+		env.glow_enabled = false
+		env.fog_enabled = false
+		await _perf_sample(tag + " -glow-fog")
+		env.glow_enabled = true
+		env.fog_enabled = true
+		vp.scaling_3d_scale = 0.75
+		await _perf_sample(tag + " 3d@75%")
+		vp.scaling_3d_scale = 1.0
+
+
+static func _mesh_tris(m: Mesh) -> int:
+	if m == null:
+		return 0
+	var t := 0
+	for i in m.get_surface_count():
+		var arr := m.surface_get_arrays(i)
+		var idx = arr[Mesh.ARRAY_INDEX]
+		t += (idx.size() if idx != null and idx.size() > 0 else (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
+	return t
+
+
+## Triangle budget by kind of object (whole island, ignoring culling).
+func _act_tris() -> void:
+	var totals := {}
+	var cache := {}
+	for g in get_tree().current_scene.find_children("*", "GeometryInstance3D", true, false):
+		var tris := 0
+		var key := ""
+		if g is MultiMeshInstance3D:
+			var mm: MultiMesh = (g as MultiMeshInstance3D).multimesh
+			if mm == null or mm.mesh == null:
+				continue
+			if not cache.has(mm.mesh):
+				cache[mm.mesh] = _mesh_tris(mm.mesh)
+			tris = cache[mm.mesh] * mm.instance_count
+			key = "MM " + str(g.name).rstrip("0123456789_-").replace("Scatter_", "")
+		elif g is MeshInstance3D:
+			var m := (g as MeshInstance3D).mesh
+			if m == null:
+				continue
+			if not cache.has(m):
+				cache[m] = _mesh_tris(m)
+			tris = cache[m]
+			var par := g.get_parent()
+			key = str(par.name if par else g.name).rstrip("0123456789_-@")
+			if (g as GeometryInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				key += " (shadow)"
+		else:
+			continue
+		totals[key] = totals.get(key, 0) + tris
+	# Which meshes make up the biggest groups (by mesh resource, summed over uses).
+	var by_mesh := {}
+	for g in get_tree().current_scene.find_children("*", "MeshInstance3D", true, false):
+		var m := (g as MeshInstance3D).mesh
+		if m and cache.has(m):
+			var gp := str(g.get_path())
+			var nm := "%s | %s" % [gp.substr(maxi(0, gp.length() - 70)), g.get_parent().get_parent().name if g.get_parent().get_parent() else ""]
+			by_mesh[nm] = by_mesh.get(nm, 0) + cache[m]
+	var mk := by_mesh.keys()
+	mk.sort_custom(func(a, b): return by_mesh[a] > by_mesh[b])
+	for k in mk.slice(0, 25):
+		log_line("[tris-mesh] %-60s %8d" % [k, by_mesh[k]])
+	var keys := totals.keys()
+	keys.sort_custom(func(a, b): return totals[a] > totals[b])
+	for k in keys.slice(0, 40):
+		log_line("[tris] %-50s %8d" % [k, totals[k]])
+
+
+## Finer GPU breakdown at the plaza: each feature off, with the baseline
+## re-sampled between toggles (laptop GPUs heat up and slow down over time).
+func _act_perfx() -> void:
+	var we: WorldEnvironment = get_tree().root.find_children("*", "WorldEnvironment", true, false)[0]
+	var env := we.environment
+	var sun: DirectionalLight3D = get_tree().root.find_children("*", "DirectionalLight3D", true, false)[0]
+	var vp := get_viewport()
+	var scene := get_tree().current_scene
+	var grass := get_tree().root.find_children("Grass_*", "MultiMeshInstance3D", true, false)
+	var mms := get_tree().root.find_children("*", "MultiMeshInstance3D", true, false)
+	var toggles := {
+		"ssao": func(on: bool) -> void: env.ssao_enabled = on,
+		"shadows": func(on: bool) -> void: sun.shadow_enabled = on,
+		"glow": func(on: bool) -> void: env.glow_enabled = on,
+		"fog": func(on: bool) -> void: env.fog_enabled = on,
+		"ocean": func(on: bool) -> void: (scene.get_node("Ocean") as Node3D).visible = on,
+		"terrain": func(on: bool) -> void: (scene.get_node("Terrain") as Node3D).visible = on,
+		"grass": func(on: bool) -> void:
+			for g in grass:
+				g.visible = on,
+		"multimesh": func(on: bool) -> void:
+			for g in mms:
+				g.visible = on,
+		"fxaa": func(on: bool) -> void: vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if on else Viewport.SCREEN_SPACE_AA_DISABLED,
+		"res75": func(on: bool) -> void: vp.scaling_3d_scale = 1.0 if on else 0.75,
+		"sky": func(on: bool) -> void: env.background_mode = Environment.BG_SKY if on else Environment.BG_COLOR,
+		"tonemap": func(on: bool) -> void: env.tonemap_mode = Environment.TONE_MAPPER_FILMIC if on else Environment.TONE_MAPPER_LINEAR,
+		"sun": func(on: bool) -> void: sun.visible = on,
+		"stretch": func(on: bool) -> void: get_tree().root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS if on else Window.CONTENT_SCALE_MODE_DISABLED,
+		"fsr": func(on: bool) -> void: vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if on else Viewport.SCALING_3D_MODE_BILINEAR,
+		"hud": func(on: bool) -> void:
+			for c in get_tree().root.find_children("*", "CanvasLayer", true, false):
+				(c as CanvasLayer).visible = on,
+	}
+	if Game.options.has("perf_toggles"):
+		var only: PackedStringArray = str(Game.options["perf_toggles"]).split(",")
+		for k in toggles.keys():
+			if not only.has(k):
+				toggles.erase(k)
+	if Game.options.has("perf_room"):
+		await Places.travel(Places.interiors["pizza"].global_position + Places.interiors["pizza"].spawn, 0.0, "pizza")
+		await _frames(60)
+		for k in toggles:
+			await _perf_sample("room base", 45)
+			(toggles[k] as Callable).call(false)
+			await _perf_sample("room -%s" % k, 45)
+			(toggles[k] as Callable).call(true)
+		return
+	var spots := [[Vector3(0, 0, -2), PI, "plaza"], [Vector3(30, 0, -30), 0.0, "east"]]
+	if Game.options.has("east_first"):
+		spots.reverse()
+	for spot in spots:
+		await _place(spot[0], spot[1], spot[1], -28.0, 10.0)
+		await _frames(60)
+		for k in toggles:
+			await _perf_sample("%s base" % spot[2], 45)
+			(toggles[k] as Callable).call(false)
+			await _perf_sample("%s -%s" % [spot[2], k], 45)
+			(toggles[k] as Callable).call(true)
 
 
 ## Frame-time numbers at a few spots, plus the hitch when walking into a room.

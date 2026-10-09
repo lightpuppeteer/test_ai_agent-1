@@ -21,8 +21,11 @@ const SIZES := {
 	"p": [Vector3(5.21, 3.86, 4.16), Vector3(-2.6, 0, -2.08)],
 	"t": [Vector3(5.52, 4.86, 5.91), Vector3(-2.79, 0, -2.95)],
 }
-## Roof style per house type.
-const ROOF := {"a": "cap", "c": "gable", "e": "gable", "h": "flat", "p": "cap", "t": "gable"}
+## Every building gets the same kind of roof: a plain gable at one pitch.
+const PITCH := 0.62          # roof rise per metre of half-depth (~32 degrees)
+const OVERHANG := 0.45       # how far the eaves reach past the walls (along the slope)
+const SLAB := 0.26           # roof thickness
+const TRIM := Color(0.98, 0.96, 0.92)
 
 
 ## A finished cottage in world units for a given Kenney type, roof colour and size multiplier.
@@ -35,14 +38,11 @@ static func make(type: String, roof: Color, mul: float) -> Node3D:
 	var cz := mn.z + sz.z * 0.5
 	var w := sz.x * 0.9
 	var d := sz.z * 0.9
-	var style: String = ROOF.get(type, "gable")
 	var two_story := type in ["c", "e", "t"]
 	var wall_h := sz.y * (0.6 if two_story else 0.62)
-	if style == "flat":
-		wall_h = sz.y * 0.86
 	# Pebble plinth and pillowy walls.
 	b.rbox(Vector3(sz.x * 0.97, 0.42, sz.z * 0.97), Vector3(cx, 0.12, cz), STONE, STONE.darkened(0.15), 0.16)
-	b.rbox(Vector3(w, wall_h, d), Vector3(cx, wall_h * 0.5 + 0.2, cz), WALL, WALL.darkened(0.08), minf(0.55, w * 0.1))
+	b.rbox(Vector3(w, wall_h, d), Vector3(cx, wall_h * 0.5 + 0.2, cz), WALL, WALL.darkened(0.08), minf(0.3, w * 0.06))
 	# Rounded corner stones (quoins) stacked up each corner.
 	for qx in [-1.0, 1.0]:
 		for qz in [-1.0, 1.0]:
@@ -58,30 +58,15 @@ static func make(type: String, roof: Color, mul: float) -> Node3D:
 		# A soft belt between the floors.
 		b.rbox(Vector3(w + 0.12, 0.18, d + 0.12), Vector3(cx, wall_h * 0.5 + 0.2, cz), roof.lightened(0.55), roof.lightened(0.35), 0.09)
 	var top := wall_h + 0.2
-	match style:
-		"gable":
-			_gable(b, Vector3(cx, top, cz), w + 0.7, d + 0.7, sz.y - top + 0.25, roof)
-			b.rbox(Vector3(0.55, 1.3, 0.55), Vector3(cx + w * 0.28, top + (sz.y - top) * 0.55, cz - d * 0.12), STONE, STONE.darkened(0.1), 0.18)
-			b.blob(Vector3(cx + w * 0.28, top + (sz.y - top) * 0.55 + 0.68, cz - d * 0.12), Vector3(0.36, 0.14, 0.36), roof.darkened(0.1), roof.darkened(0.3), 10, 5)
-		"cap":
-			# Mushroom-cap roof: a big soft dome with a lip, spotted like a toadstool.
-			# Raised so its lip clears the door and the window tops.
-			var cap_c := Vector3(cx, top + 0.4, cz)
-			var cap_r := Vector3(w * 0.62, (sz.y - top) * 1.05 + 0.3, d * 0.64)
-			b.blob(cap_c, cap_r, roof.lightened(0.08), roof.darkened(0.12), 26, 14, 0.02, Basis(), "matte", true)
-			var rng := RandomNumberGenerator.new()
-			rng.seed = int(roof.g * 1000)
-			for i in 7:
-				var a := TAU * i / 7.0 + rng.randf() * 0.4
-				var e := rng.randf_range(0.35, 0.95)
-				var dir := Vector3(cos(a) * sin(e), cos(e), sin(a) * sin(e))
-				var p := cap_c + Vector3(dir.x * cap_r.x, dir.y * cap_r.y, dir.z * cap_r.z) * 1.02
-				b.disc(p, dir, Vector3.RIGHT, 0.32, 0.28, Color(1, 0.98, 0.94), Color(0.96, 0.93, 0.88), 10, 0.05, "matte")
-		"flat":
-			# A rounded parapet and a little rooftop garden.
-			b.rbox(Vector3(w + 0.3, 0.4, d + 0.3), Vector3(cx, top + 0.1, cz), roof.lightened(0.15), roof, 0.18)
-			b.blob(Vector3(cx - w * 0.25, top + 0.45, cz - d * 0.15), Vector3(0.6, 0.35, 0.5), RoundKit.LEAF, RoundKit.LEAF_DARK, 10, 6, 0.08)
-			b.blob(Vector3(cx + w * 0.3, top + 0.4, cz - d * 0.2), Vector3(0.45, 0.3, 0.4), RoundKit.LEAF, RoundKit.LEAF_DARK, 10, 6, 0.08)
+	var rh := d * 0.5 * PITCH
+	var eave := _gable(b, Vector3(cx, top, cz), w, d, rh, roof)
+	sz.y = top + rh + SLAB
+	# Chimney on the back slope.
+	var chx := cx + w * 0.28
+	var chz := cz - d * 0.2
+	var chy := top + rh * (1.0 - 0.4) + 0.5
+	b.rbox(Vector3(0.6, 1.4, 0.6), Vector3(chx, chy, chz), STONE.lightened(0.04), STONE.darkened(0.1), 0.12)
+	b.rbox(Vector3(0.74, 0.16, 0.74), Vector3(chx, chy + 0.74, chz), STONE.darkened(0.08), STONE.darkened(0.15), 0.06)
 	# Front: arched door with a porch light, flanked by round-topped windows.
 	var fz := cz + d * 0.5
 	var door_h := minf(2.1, wall_h * 0.62)
@@ -121,38 +106,65 @@ static func make(type: String, roof: Color, mul: float) -> Node3D:
 	root.add_child(mi)
 	root.set_meta("aabb", AABB(mn, sz))
 	# Height and forward reach of the front eave (for shop signs).
-	root.set_meta("eave", Vector2(top, fz + (0.77 if style == "gable" else 0.3)))
+	root.set_meta("eave", eave)
 	return root
 
 
-## A puffy gable roof: two thick rounded slabs leaning on each other, ridge along X.
-static func _gable(b: RoundKit.MB, base: Vector3, w: float, d: float, h: float, col: Color) -> void:
+## A plain gable roof over walls w × d whose tops are at base.y, ridge along X:
+## a wall-coloured attic prism (the triangular gable ends), two roof slabs with
+## eaves and a ridge cap, white barge boards and fascia, faint tile courses and a
+## round attic window in each gable. Returns the front eave (top y, outer z).
+static func _gable(b: RoundKit.MB, base: Vector3, w: float, d: float, h: float, col: Color) -> Vector2:
 	var half := d * 0.5
 	var ang := atan2(h, half)
-	var slab_len := sqrt(half * half + h * h) + 0.25
-	for s in [-1.0, 1.0]:
-		var mid := base + Vector3(0, h * 0.5, s * half * 0.5)
-		b.rbox(Vector3(w, 0.42, slab_len), mid, col.lightened(0.06), col.darkened(0.12), 0.2, Vector3(rad_to_deg(ang) * s, 0, 0))
-	# Gable ends filled with wall, a round attic window.
-	for sx in [-1.0, 1.0]:
-		var pts_base := base + Vector3(sx * (w * 0.5 - 0.4), 0, 0)
-		b.rbox(Vector3(0.3, h * 0.75, half * 1.2), pts_base + Vector3(0, h * 0.3, 0), WALL, WALL.darkened(0.06), 0.14)
-	b.rbox(Vector3(w + 0.1, 0.3, 0.36), base + Vector3(0, h + 0.05, 0), col.darkened(0.08), col.darkened(0.2), 0.15)
-	# Shingle courses: soft ridges across each slope, and a scalloped "pie crust"
-	# row of tiles hanging over the eaves.
-	var count := maxi(4, int(w / 0.62))
-	var step := w / count
+	var L := sqrt(half * half + h * h)
+	var x0 := base.x - w * 0.5 + 0.02
+	var x1 := base.x + w * 0.5 - 0.02
+	# Attic prism: triangles at both ends, sloped faces underneath the slabs.
+	var wl := WALL
+	var wd := WALL.darkened(0.06)
+	for xs: Array in [[x0, -1.0], [x1, 1.0]]:
+		var x: float = xs[0]
+		var nx := Vector3(xs[1], 0, 0)
+		b.tri("matte", [Vector3(x, base.y - 0.05, base.z - half), nx, wd], [Vector3(x, base.y - 0.05, base.z + half), nx, wd], [Vector3(x, base.y + h, base.z), nx, wl])
 	for s: float in [-1.0, 1.0]:
-		var n := Vector3(0, half, s * h).normalized()
-		var tb := Basis(Vector3.RIGHT, n, Vector3.RIGHT.cross(n))
-		var slope_deg := rad_to_deg(ang) * s
-		for f: float in [0.3, 0.55, 0.8]:
-			var cp := base + Vector3(0, h * f, s * half * (1.0 - f)) + n * 0.22
-			b.rbox(Vector3(w - 0.1, 0.07, 0.16), cp, col.lightened(0.12), col, 0.035, Vector3(slope_deg, 0, 0), "matte", true)
-		var eave := base + Vector3(0, -0.06, s * (half + 0.12)) + n * 0.14
-		for i in count:
-			var x := -w * 0.5 + step * (i + 0.5)
-			b.blob(eave + Vector3(x, 0, 0), Vector3(step * 0.55, 0.09, 0.3), col.lightened(0.1), col.darkened(0.04), 8, 4, 0.0, tb)
+		var ns := Vector3(0, half, s * h).normalized()
+		var e0 := Vector3(0, base.y - 0.05, base.z + s * half)
+		var r := Vector3(0, base.y + h, base.z)
+		b.tri("matte", [Vector3(x0, e0.y, e0.z), ns, wd], [Vector3(x1, e0.y, e0.z), ns, wd], [Vector3(x1, r.y, r.z), ns, wl])
+		b.tri("matte", [Vector3(x0, e0.y, e0.z), ns, wd], [Vector3(x1, r.y, r.z), ns, wl], [Vector3(x0, r.y, r.z), ns, wl])
+	# Roof slabs: from the overhanging eave up to just past the ridge.
+	var rw := w + 0.7
+	var slab_len := L + OVERHANG + 0.12
+	var uc := (L + 0.12 - OVERHANG) * 0.5           # slab centre, along the slope from the eave line
+	for s: float in [-1.0, 1.0]:
+		var v := Vector3(0, h, -s * half) / L          # up the slope
+		var n := Vector3(0, half, s * h) / L           # out of the roof
+		var pe := Vector3(base.x, base.y, base.z + s * half)
+		var rot := Vector3(rad_to_deg(ang) * s, 0, 0)
+		b.rbox(Vector3(rw, SLAB, slab_len), pe + v * uc + n * (SLAB * 0.5), col.lightened(0.04), col.darkened(0.1), 0.08, rot)
+		# Faint tile courses.
+		for f: float in [0.2, 0.42, 0.64, 0.86]:
+			var cp := pe + v * (L * f - OVERHANG * (1.0 - f)) + n * (SLAB + 0.01)
+			b.rbox(Vector3(rw - 0.06, 0.04, 0.1), cp, col.darkened(0.08), col.darkened(0.12), 0.015, rot, "matte", true)
+		# Fascia board along the eave.
+		var fe := pe - v * OVERHANG + n * (SLAB * 0.5)
+		b.rbox(Vector3(rw + 0.04, SLAB + 0.08, 0.1), fe, TRIM, TRIM.darkened(0.06), 0.03, rot, "matte", true)
+		# Barge boards up both gable edges.
+		for sx: float in [-1.0, 1.0]:
+			b.rbox(Vector3(0.12, SLAB + 0.1, slab_len), pe + v * uc + n * (SLAB * 0.5) + Vector3(sx * (rw * 0.5 + 0.04), 0, 0), TRIM, TRIM.darkened(0.06), 0.04, rot, "matte", true)
+	# Ridge cap.
+	b.rbox(Vector3(rw + 0.12, 0.2, 0.34), Vector3(base.x, base.y + h + SLAB / cos(ang) - 0.04, base.z), col.darkened(0.12), col.darkened(0.2), 0.08)
+	# A round attic window in each gable.
+	for sx: float in [-1.0, 1.0]:
+		var wp := Vector3(base.x + sx * (w * 0.5 + 0.02), base.y + h * 0.42, base.z)
+		var nb := Basis(Vector3.UP, sx * PI * 0.5)
+		b.blob(wp, Vector3(0.36, 0.36, 0.08), FRAME, FRAME.darkened(0.06), 12, 6, 0.0, nb)
+		b.blob(wp + Vector3(sx * 0.04, 0, 0), Vector3(0.26, 0.26, 0.07), GLASS.lightened(0.15), GLASS, 12, 6, 0.0, nb, "glossy")
+	# Front eave: the top of the fascia and how far it reaches.
+	var out_z := base.z + half + OVERHANG * cos(ang) + SLAB * sin(ang) + 0.06
+	var top_y := base.y - OVERHANG * sin(ang) + SLAB * cos(ang)
+	return Vector2(top_y, out_z)
 
 
 static func _window(b: RoundKit.MB, at: Vector3, n: Vector3, accent: Color) -> void:

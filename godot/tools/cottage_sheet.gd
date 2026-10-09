@@ -28,6 +28,9 @@ func _ready() -> void:
 	var cx := (types.size() - 1) * 4.0
 	cam.position = Vector3(cx + 2.0, 7, 6.0 + types.size() * 3.5)
 	cam.look_at(Vector3(cx, 2.5, 0))
+	if a.size() > 2 and a[2] == "side":
+		cam.position = Vector3(cx + 14.0, 4.0, 7.0)
+		cam.look_at(Vector3(cx, 3.0, 0))
 	get_viewport().size = Vector2i(1800, 700)
 	for k in 5:
 		await get_tree().process_frame

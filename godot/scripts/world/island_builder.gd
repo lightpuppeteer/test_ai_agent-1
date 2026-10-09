@@ -595,7 +595,7 @@ func _scatter() -> void:
 		var id: String
 		# (The short lawn grass is the GrassField; these are taller accent tufts.)
 		if r < 0.12:
-			id = ["nature-kit/grass", "nature-kit/grass_large", "nature-kit/grass_leafs", "nature-kit/grass_leafs"][rng.randi() % 4]
+			continue   # (the thick GrassField lawn replaces the old accent tufts)
 		elif r < 0.36:
 			id = ["nature-kit/plant_bush", "nature-kit/plant_bushDetailed"][rng.randi() % 2]
 		elif r < 0.38:
@@ -643,7 +643,7 @@ func _scatter() -> void:
 			mmi.multimesh = mm
 			# Only bushes cast shadows (tiny plants just add noise, and cost a lot).
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if id.contains("bush") else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			mmi.visibility_range_end = 55.0 if id.contains("grass") else (75.0 if id.contains("flower") or id.contains("mushroom") else 110.0)
-			mmi.visibility_range_end_margin = 15.0
+			mmi.visibility_range_end = 40.0 if id.contains("grass") else (42.0 if id.contains("flower") or id.contains("mushroom") else 65.0)
+			mmi.visibility_range_end_margin = 10.0
 			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 			add_child(mmi)

@@ -136,7 +136,7 @@ static func _lathe(st: SurfaceTool, base: Vector3, prof: Array[Vector2], seg: in
 
 
 ## A soft, slightly lumpy ball of leaves (smooth normals, lighter on top).
-static func _blob(st: SurfaceTool, c: Vector3, r: float, top: Color, bottom: Color, rng: RandomNumberGenerator, lump: float, seg: int = 14, rings: int = 9) -> void:
+static func _blob(st: SurfaceTool, c: Vector3, r: float, top: Color, bottom: Color, rng: RandomNumberGenerator, lump: float, seg: int = 11, rings: int = 7) -> void:
 	var phase := rng.randf() * TAU
 	var verts := []
 	for j in rings + 1:

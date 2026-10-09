@@ -47,21 +47,28 @@ func _ready() -> void:
 	sun.shadow_enabled = true
 	sun.shadow_bias = 0.03
 	sun.shadow_normal_bias = 1.2
-	# Soft, contact-hardening shadows (PCSS) like a sunny storybook afternoon.
-	sun.shadow_blur = 2.2
-	sun.light_angular_distance = 2.2
+	# Soft shadows: a wide PCF blur (contact-hardening PCSS looked similar but
+	# cost a lot more per pixel on the MacBook GPU).
+	sun.shadow_blur = 2.6
+	sun.light_angular_distance = 0.0
 	sun.shadow_opacity = 0.92
-	sun.directional_shadow_max_distance = 70.0
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_blend_splits = true
+	# One shadow map over the 45 m around the camera: the third-person view never
+	# needs crisp shadows further out, and every extra split re-renders all the
+	# shadow casters (the single biggest GPU cost on the MacBook).
+	sun.directional_shadow_max_distance = 40.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_fade_start = 0.85
 	add_child(sun)
 
 	sky_mat = ShaderMaterial.new()
 	sky_mat.shader = SKY_SHADER
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
+	sky_mat.set_shader_parameter("half_res_clouds", RenderingServer.get_current_rendering_method() != "gl_compatibility")
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
-	sky.process_mode = Sky.PROCESS_MODE_REALTIME
+	# The lighting cubemap ignores the drifting clouds (see sky.gdshader), so it
+	# only needs refreshing a little at a time.
+	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
 
 	env = Environment.new()
 	env.background_mode = Environment.BG_SKY

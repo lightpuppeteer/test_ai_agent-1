@@ -195,7 +195,11 @@ class MB:
 	func rbox(size: Vector3, at: Vector3, top: Color, bottom: Color, r: float, rot := Vector3.ZERO, mat := "matte", lo := false) -> void:
 		var h := size * 0.5
 		r = minf(r, minf(h.x, minf(h.y, h.z)) * 0.98)
-		var rb: Array = Avatar._round_box(h, r, 1 if lo else 3)
+		# Rows per rounded edge: small parts (slats, frames, legs) need only one,
+		# mid-sized ones two; only big soft shapes get three.
+		var big := maxf(size.x, maxf(size.y, size.z))
+		var m := 1 if (lo or big < 1.2 or r < 0.06) else (2 if big < 3.0 else 3)
+		var rb: Array = Avatar._round_box(h, r, m)
 		var pos: PackedVector3Array = rb[0]
 		var nrm: PackedVector3Array = rb[1]
 		var basis := Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z)))
@@ -300,7 +304,7 @@ static func _flower(b: MB, id: String) -> void:
 			for i in 3:
 				var a := TAU * i / 3.0
 				var d := Vector3(cos(a), 0, sin(a))
-				b.blob(top + d * 0.04 + Vector3(0, 0.08, 0), Vector3(0.075, 0.12, 0.05), petal.lightened(0.1), petal.darkened(0.12), 6, 4, 0.0,
+				b.blob(top + d * 0.04 + Vector3(0, 0.08, 0), Vector3(0.075, 0.12, 0.05), petal.lightened(0.1), petal.darkened(0.12), 5, 3, 0.0,
 						Basis(Vector3.UP, -a))
 		"B":
 			# Cosmos / pansy: five round petals around a round heart.
@@ -309,11 +313,11 @@ static func _flower(b: MB, id: String) -> void:
 			for i in 5:
 				var a := TAU * i / 5.0
 				var d := (ax.rotated(face, a)).normalized()
-				b.disc(top + d * 0.08 + face * 0.01, face, d, 0.085, 0.065, petal.lightened(0.12), petal, 7, 0.18)
+				b.disc(top + d * 0.08 + face * 0.01, face, d, 0.085, 0.065, petal.lightened(0.12), petal, 5, 0.18)
 			b.blob(top + face * 0.03, Vector3(0.045, 0.03, 0.045), heart, heart.darkened(0.2), 5, 3)
 		_:
 			# Pompom: a round, lumpy flower ball.
-			b.blob(top + Vector3(0, 0.08, 0), Vector3(0.12, 0.11, 0.12), petal.lightened(0.15), petal.darkened(0.15), 7, 5, 0.12)
+			b.blob(top + Vector3(0, 0.08, 0), Vector3(0.12, 0.11, 0.12), petal.lightened(0.15), petal.darkened(0.15), 6, 4, 0.12)
 
 
 static func _grass(b: MB, id: String) -> void:
@@ -356,16 +360,16 @@ static func _bush(b: MB, detailed: bool) -> void:
 		k = 1.5
 		parts.append([Vector3(-0.3, 0.3, -0.25), Vector3(0.32, 0.3, 0.32)])
 	for p in parts:
-		b.blob((p[0] as Vector3) * k, (p[1] as Vector3) * k, top, bot, 10, 6, 0.07)
+		b.blob((p[0] as Vector3) * k, (p[1] as Vector3) * k, top, bot, 8, 5, 0.07)
 	if detailed:
 		# Little azalea flowers dotted over the top.
 		var col: Color = [Color(1.0, 0.55, 0.72), Color(1.0, 0.78, 0.35), Color(0.95, 0.45, 0.45)][b.rng.randi() % 3]
-		for i in 14:
+		for i in 9:
 			var a := b.rng.randf() * TAU
 			var e := b.rng.randf_range(0.35, 1.2)
 			var d := Vector3(cos(a) * sin(e), cos(e), sin(a) * sin(e))
 			var c := Vector3(0, 0.34, 0) * k + Vector3(d.x * 0.5, d.y * 0.45, d.z * 0.5) * k
-			b.blob(c, Vector3(0.075, 0.055, 0.075), col.lightened(0.1), col.darkened(0.05), 6, 4)
+			b.blob(c, Vector3(0.085, 0.06, 0.085), col.lightened(0.1), col.darkened(0.05), 5, 3)
 
 
 static func _mushrooms(b: MB) -> void:

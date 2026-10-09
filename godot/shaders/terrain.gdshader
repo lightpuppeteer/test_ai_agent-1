@@ -9,8 +9,8 @@ render_mode diffuse_burley, specular_schlick_ggx;
 uniform sampler2D splat : filter_linear, repeat_disable;   // r path, g paving, b road, a soil
 uniform vec4 splat_rect;                                    // x0, z0, width, depth
 
-uniform vec3 grass_a : source_color = vec3(0.33, 0.62, 0.25);
-uniform vec3 grass_b : source_color = vec3(0.45, 0.72, 0.29);
+uniform vec3 grass_a : source_color = vec3(0.30, 0.58, 0.23);
+uniform vec3 grass_b : source_color = vec3(0.41, 0.67, 0.27);
 uniform vec3 grass_c : source_color = vec3(0.60, 0.74, 0.32);
 uniform vec3 sand_dry : source_color = vec3(0.93, 0.83, 0.62);
 uniform vec3 sand_wet : source_color = vec3(0.78, 0.66, 0.47);

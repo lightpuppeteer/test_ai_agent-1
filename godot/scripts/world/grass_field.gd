@@ -1,25 +1,37 @@
 class_name GrassField
 extends RefCounted
-## A carpet of short, soft grass tufts over the island's lawns (Animal Crossing
-## style), as chunked MultiMeshes that fade out with distance. The blades sway
-## and bend away from Tatiana and Marco (shaders/grass_field.gdshader).
+## A thick carpet of short, soft grass over the island's lawns (Animal Crossing
+## style). Each MultiMesh instance is a whole 1 m turf of single-triangle blades;
+## the shader (shaders/grass_field.gdshader) sits every blade on the real ground
+## height, hides blades that land on paths, paving, sand or soil, shrinks them
+## into the ground towards the edge of the draw distance, sways them in the
+## wind and bends them away from Tatiana and Marco.
 
-const CELL := 12.0
-const SPACING := 0.42          # average distance between tufts
-const RANGE := 34.0            # visible up to this distance
+const CELL := 12.0             # metres per culling chunk
+const SPACING := 0.78          # distance between turf centres
+const BLADES := 92             # blades per turf
+const RANGE := 27.0            # drawn up to this distance (blades shrink away before it)
 
 static var _mesh: ArrayMesh
 static var _mat: ShaderMaterial
 
 
-static func material() -> ShaderMaterial:
+static func material(t: Terrain) -> ShaderMaterial:
 	if _mat == null:
 		_mat = ShaderMaterial.new()
 		_mat.shader = preload("res://shaders/grass_field.gdshader")
+		_mat.set_shader_parameter("height_tex", t.height_texture)
+		_mat.set_shader_parameter("height_info", Vector3(Terrain.SIZE, float(Terrain.N), 0.0))
+		_mat.set_shader_parameter("splat", t.splat_texture)
+		var r := Terrain.SPLAT_RECT
+		_mat.set_shader_parameter("splat_rect", Vector4(r.position.x, r.position.y, r.size.x, r.size.y))
+		_mat.set_shader_parameter("fade_end", RANGE - 1.0)
 	return _mat
 
 
-## One tuft: 7 soft blades (3 triangles each) fanning out, ~0.2 m tall. UV.y = height fraction.
+## One turf: BLADES single-triangle blades scattered over a 1 m square (with a
+## little spill so neighbouring turfs knit together). UV.y = height fraction,
+## UV.x = per-blade random, UV2 = the blade's root (x, z) in the turf.
 static func mesh() -> ArrayMesh:
 	if _mesh:
 		return _mesh
@@ -27,45 +39,31 @@ static func mesh() -> ArrayMesh:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
-	var n := 7
-	for i in n:
-		var a := TAU * i / n + rng.randf_range(-0.3, 0.3)
-		var d := Vector3(cos(a), 0, sin(a))
-		var side := d.cross(Vector3.UP).normalized()
-		var hh := rng.randf_range(0.14, 0.24)
-		var lean := rng.randf_range(0.04, 0.09)
-		var root := d * rng.randf_range(0.0, 0.07)
-		var widths := [0.04, 0.034, 0.0]
-		var rows := []
-		for s in 3:
-			var t := s / 2.0
-			var p := root + d * lean * t * t + Vector3(0, hh * t - 0.02, 0)
-			var w: float = widths[s]
-			rows.append([p - side * w, p + side * w, t])
-		for s in 2:
-			var r0: Array = rows[s]
-			var r1: Array = rows[s + 1]
-			if s == 1:
-				# Pointed tip: a single triangle.
-				_v(st, r0[0], r0[2]); _v(st, r1[0], r1[2]); _v(st, r0[1], r0[2])
-				continue
-			_v(st, r0[0], r0[2]); _v(st, r1[0], r1[2]); _v(st, r1[1], r1[2])
-			_v(st, r0[0], r0[2]); _v(st, r1[1], r1[2]); _v(st, r0[1], r0[2])
+	for i in BLADES:
+		var root := Vector3(rng.randf_range(-0.56, 0.56), 0, rng.randf_range(-0.56, 0.56))
+		var a := rng.randf() * TAU
+		var side := Vector3(cos(a), 0, sin(a))
+		var lean_dir := side.cross(Vector3.UP) * (1.0 if rng.randf() < 0.5 else -1.0)
+		var h := rng.randf_range(0.13, 0.27)
+		var w := rng.randf_range(0.03, 0.045)
+		var tip := root + lean_dir * rng.randf_range(0.02, 0.08) + Vector3(0, h, 0)
+		var r := rng.randf()
+		var r2 := Vector2(root.x, root.z)
+		for v: Array in [[root - side * w - Vector3(0, 0.03, 0), 0.0], [tip, 1.0], [root + side * w - Vector3(0, 0.03, 0), 0.0]]:
+			st.set_uv(Vector2(r, v[1]))
+			st.set_uv2(r2)
+			st.set_normal(Vector3.UP)
+			st.add_vertex(v[0])
 	_mesh = st.commit()
+	_mesh.custom_aabb = AABB(Vector3(-0.7, -3.0, -0.7), Vector3(1.4, 6.0, 1.4))
 	return _mesh
 
 
-static func _v(st: SurfaceTool, p: Vector3, h: float) -> void:
-	st.set_uv(Vector2(0.5, h))
-	st.set_normal(Vector3.UP)
-	st.add_vertex(p)
-
-
-## Scatter tufts over grassy ground (not paths, paving, sand, cliffs or props).
+## Lay turfs over every grassy patch (the shader trims the edges per blade).
 static func build(b: IslandBuilder) -> void:
 	var t0 := Time.get_ticks_msec()
 	var T: Terrain = b.T
-	# Occupied circles bucketed on a coarse grid for quick "is clear" checks.
+	# Occupied circles (houses, props) bucketed on a coarse grid for quick checks.
 	var occ := {}
 	for c in b.occupied:
 		var r: float = c.z
@@ -82,21 +80,22 @@ static func build(b: IslandBuilder) -> void:
 	var x := -72.0
 	while x < 72.0:
 		var z := -68.0
-		while z < 28.0:
-			var px := x + rng.randf_range(-0.45, 0.45) * SPACING
-			var pz := z + rng.randf_range(-0.45, 0.45) * SPACING
+		while z < 30.0:
+			var px := x + rng.randf_range(-0.3, 0.3) * SPACING
+			var pz := z + rng.randf_range(-0.3, 0.3) * SPACING
 			z += SPACING
 			var h := b.ground(px, pz)
-			if h < 1.45:
+			if h < 1.3:
 				continue
+			# Keep turfs whose centre is grassy or right next to grass.
 			var sp := T.splat_at(px, pz)
-			if sp.r > 0.25 or sp.g > 0.25 or sp.b > 0.25 or sp.a > 0.3:
+			if sp.r > 0.7 or sp.g > 0.7 or sp.b > 0.7 or sp.a > 0.7:
 				continue
-			if T.normal_at(px, pz).y < 0.84:
+			if T.normal_at(px, pz).y < 0.8:
 				continue
 			var clear := true
 			for c in occ.get(Vector2i(floori(px / 4.0), floori(pz / 4.0)), []):
-				if Vector2(c.x, c.y).distance_to(Vector2(px, pz)) < c.z * 0.85:
+				if Vector2(c.x, c.y).distance_to(Vector2(px, pz)) < c.z * 0.75:
 					clear = false
 					break
 			if not clear:
@@ -104,30 +103,25 @@ static func build(b: IslandBuilder) -> void:
 			var key := Vector2i(floori(px / CELL), floori(pz / CELL))
 			if not cells.has(key):
 				cells[key] = []
-			cells[key].append([Vector3(px, h - 0.01, pz), rng.randf() * TAU, rng.randf_range(0.75, 1.25), rng.randf()])
+			cells[key].append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.9, 1.15)), Vector3(px, h, pz)))
 			count += 1
 		x += SPACING
 	var m := mesh()
+	var mat := material(T)
 	for key in cells:
 		var list: Array = cells[key]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_custom_data = true
 		mm.mesh = m
 		mm.instance_count = list.size()
 		for i in list.size():
-			var it: Array = list[i]
-			var s: float = it[2]
-			mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, it[1]).scaled(Vector3(s, s * randf_range(0.85, 1.15), s)), it[0]))
-			mm.set_instance_custom_data(i, Color(it[3], 0, 0, 0))
+			mm.set_instance_transform(i, list[i])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.name = "Grass_%d_%d" % [key.x, key.y]
 		mmi.multimesh = mm
-		mmi.material_override = material()
+		mmi.material_override = mat
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mmi.visibility_range_end = RANGE
-		mmi.visibility_range_end_margin = 8.0
-		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		mmi.visibility_range_end = RANGE + CELL * 0.7
 		b.add_child(mmi)
 	if Game.options.has("navdump") or Game.options.has("grassinfo"):
-		print("[grass] %d tufts in %d cells, %d ms" % [count, cells.size(), Time.get_ticks_msec() - t0])
+		print("[grass] %d turfs (%d blades) in %d cells, %d ms" % [count, count * BLADES, cells.size(), Time.get_ticks_msec() - t0])

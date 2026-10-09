@@ -171,6 +171,27 @@ func _building(x: float, z: float, facing_deg: float, type: String, roof: Color,
 	return {"node": n, "door": d, "front": front, "outside": outside, "fwd": fwd, "meet": meet}
 
 
+## Stands a shop sign on posts on the building's front eave: in front of the
+## roof, clear of the slopes and the upper windows.
+func _mount_sign(info: Dictionary, sign: Node3D) -> void:
+	add_child(sign)
+	var fwd: Vector3 = info["fwd"]
+	var side := Vector3(fwd.z, 0, -fwd.x)
+	sign.rotation.y = atan2(fwd.x, fwd.z)
+	var house: Node3D = info["node"]
+	var sz: Vector2 = sign.get_meta("size")
+	if not house.has_meta("eave"):
+		sign.global_position = info["front"] + Vector3(0, B.ground(house.global_position.x, house.global_position.z) + 3.6, 0) + fwd * 0.3
+		return
+	var ev: Vector2 = house.get_meta("eave")
+	var base := house.global_transform * Vector3(0, ev.x, ev.y + 0.12)
+	sign.global_position = base + Vector3(0, 0.1 + sz.y * 0.5, 0)
+	for sx: float in [-1.0, 1.0]:
+		var post := Props3D.blocks([Props3D.b(Vector3(0.12, 0.5 + sz.y * 0.4, 0.12), Vector3.ZERO, Color(0.5, 0.33, 0.2), {"bevel": 0.03})])
+		add_child(post)
+		post.global_position = base + side * (sz.x * 0.32 * sx) + Vector3(0, sz.y * 0.2, 0) - fwd * 0.1
+
+
 func _interior(id: String, title: String, index: int, size: Vector3, wall: Color, floor_col: Color, tiles: bool = false) -> Interior:
 	var it := Interior.new()
 	it.name = "Interior_" + id
@@ -221,22 +242,7 @@ func _pizza_place() -> void:
 	var room := _interior("pizza", "Pizzeria Amore", 0, Vector3(12, 3.4, 9), Color(0.98, 0.9, 0.8), Color(0.75, 0.55, 0.38))
 	var info := _building(-28.0, 1.0, 180.0, "c", Color(0.92, 0.3, 0.28), 1.3, room, "Enter Pizzeria Amore")
 	var sign := Props3D.sign_board("pizzeria", 5.0)
-	add_child(sign)
-	sign.rotation.y = PI
-	var house: Node3D = info["node"]
-	if house.has_meta("eave"):
-		# Stand the sign on the front eave, clear of the roof and the upper windows,
-		# on two little posts.
-		var ev: Vector2 = house.get_meta("eave")
-		var sh: float = (sign.get_meta("size") as Vector2).y
-		var base := house.global_transform * Vector3(0, ev.x, ev.y + 0.15)
-		sign.global_position = base + Vector3(0, 0.12 + sh * 0.5, 0)
-		for sx in [-1.6, 1.6]:
-			var post := Props3D.blocks([Props3D.b(Vector3(0.12, 0.7, 0.12), Vector3(0, 0, 0), Color(0.5, 0.33, 0.2), {"bevel": 0.03})])
-			add_child(post)
-			post.global_position = base + Vector3(sx, 0.1, 0) - (info["fwd"] as Vector3) * 0.12
-	else:
-		sign.global_position = info["front"] + Vector3(0, B.ground(-28, -2) + 3.4, 0) + info["fwd"] * 0.25
+	_mount_sign(info, sign)
 	# Striped awning over the door.
 	var aw := MeshInstance3D.new()
 	var bm := BoxMesh.new()
@@ -357,11 +363,9 @@ var cinema_screen: CinemaScreen
 
 func _cinema() -> void:
 	var room := _interior("cinema", "Cinemas NOS", 1, Vector3(14, 5.0, 16), Color(0.32, 0.18, 0.24), Color(0.5, 0.18, 0.22))
-	var info := _building(28.0, 1.0, 180.0, "h", Color(0.25, 0.25, 0.35), 1.35, room, "Enter the cinema")
+	var info := _building(28.0, 1.0, 180.0, "h", Color(0.34, 0.36, 0.56), 1.35, room, "Enter the cinema")
 	var sign := Props3D.sign_board("cinema", 5.0, true, Color(0.16, 0.12, 0.26))
-	add_child(sign)
-	sign.global_position = info["front"] + Vector3(0, B.ground(28, -2) + 3.6, 0) + info["fwd"] * 0.25
-	sign.rotation.y = PI
+	_mount_sign(info, sign)
 	# Marquee bulbs.
 	for i in 9:
 		var bulb := MeshInstance3D.new()
@@ -527,8 +531,7 @@ func _arcade() -> void:
 	var room := _interior("arcade", "Island Arcade", 4, Vector3(14, 3.8, 11), Color(0.42, 0.32, 0.62), Color(0.36, 0.3, 0.52), true)
 	var info := _building(0.0, -26.0, 0.0, "t", Color(0.98, 0.42, 0.65), 1.5, room, "Enter the Island Arcade")
 	var sign := Props3D.sign_board("arcade", 5.0, true, Color(0.16, 0.1, 0.3))
-	add_child(sign)
-	sign.global_position = info["front"] + Vector3(0, B.ground(0, -22) + 3.7, 0) + info["fwd"] * 0.3
+	_mount_sign(info, sign)
 	spots["arcade_door"] = info["door"]
 	spots["arcade_meet"] = _marker(info["meet"])
 	# --- inside: neon, cabinets, the claw machine, the high-score board.
@@ -778,9 +781,7 @@ func _hotel() -> void:
 	var room := _interior("hotel", "Hotel Suite", 3, Vector3(12, 3.6, 10), Color(0.95, 0.93, 0.96), Color(0.92, 0.88, 0.84), true)
 	var info := _building(-56.0, -15.0, 90.0, "p", Color(0.4, 0.75, 0.8), 1.6, room, "Enter the Hotel & Spa")
 	var sign := Props3D.sign_board("hotel", 4.4, true, Color(0.2, 0.5, 0.55))
-	add_child(sign)
-	sign.global_position = info["front"] + Vector3(0, B.ground(-52, -15) + 3.8, 0) + info["fwd"] * 0.25
-	sign.rotation.y = deg_to_rad(90)
+	_mount_sign(info, sign)
 	spots["hotel_door"] = info["door"]
 	spots["hotel_meet"] = _marker(info["meet"])
 	# A proper swimming pool on a raised deck next to the hotel.

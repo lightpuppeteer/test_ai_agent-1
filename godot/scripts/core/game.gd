@@ -133,6 +133,7 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	_setup_display()
 	# The cozy toon look + rolling world (pass --flat for the plain renderer look).
 	Stylizer.enabled = not options.has("flat")
 	Stylizer.attach(get_tree())
@@ -238,7 +239,53 @@ func _input(event: InputEvent) -> void:
 		input_device_changed.emit(false)
 
 
+## Opens full screen (F11 toggles a window). The 3D world renders at 1080 lines
+## or more (the screen's own resolution on a 1080p display, the "points"
+## resolution on a Retina one, so a MacBook does not shade 8 million pixels a
+## frame); the HUD always draws at full sharpness.
+func _setup_display() -> void:
+	if options.has("shots") and not options.has("fullscreen"):
+		get_window().size = Vector2i(1600, 900)
+	elif not options.has("windowed"):
+		get_window().mode = Window.MODE_FULLSCREEN
+	for i in DisplayServer.get_screen_count():
+		print("[display] screen %d: %s px, scale %.2f, %d Hz%s" % [i, DisplayServer.screen_get_size(i), DisplayServer.screen_get_scale(i),
+			int(DisplayServer.screen_get_refresh_rate(i)), " (current)" if i == DisplayServer.window_get_current_screen() else ""])
+	# Never render faster than the display (keeps laptops cool and steady).
+	Engine.max_fps = int(options.get("max_fps", 60))
+	get_tree().root.size_changed.connect(_apply_render_scale)
+	_apply_render_scale.call_deferred()
+	if not options.has("shots"):
+		add_child(QualityGovernor.new())
+
+
+func _apply_render_scale() -> void:
+	var vp := get_tree().root
+	var h := float(DisplayServer.window_get_size().y)
+	var want := float(options.get("render_lines", 1080))
+	# Render the 3D world at (at least) `want` lines. On a Retina screen that is
+	# simply its native "points" resolution (exactly half the pixels each way),
+	# which upscales cleanly with plain bilinear filtering; FSR looked about the
+	# same here but cost ~2.5 ms a frame on the MacBook GPU.
+	var dpi := maxf(DisplayServer.screen_get_scale(DisplayServer.window_get_current_screen()), 1.0)
+	var s := clampf(maxf(want / maxf(h, 1.0), 1.0 / dpi), 0.25, 1.0)
+	if want / maxf(h, 1.0) <= 0.5 and dpi < 1.5:
+		s = 0.5   # e.g. a 4K screen without scaling: 1080 lines, a clean 2× upscale
+	if s > 0.9:
+		s = 1.0
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = s
+
+
+func toggle_fullscreen() -> void:
+	var w := get_window()
+	w.mode = Window.MODE_WINDOWED if w.mode == Window.MODE_FULLSCREEN or w.mode == Window.MODE_EXCLUSIVE_FULLSCREEN else Window.MODE_FULLSCREEN
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).physical_keycode == KEY_F11:
+		toggle_fullscreen()
+		return
 	if event.is_action_pressed("screenshot"):
 		var p := save_screenshot()
 		photo_taken.emit()

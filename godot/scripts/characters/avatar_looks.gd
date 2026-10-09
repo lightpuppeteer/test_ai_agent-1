@@ -146,7 +146,7 @@ static func _hair_him() -> Array:
 	var h := HAIR_HIM
 	var p: Array = [
 		# Short hair: a shell over the head, open at the face, cut above the ears.
-		_ball("head", Vector3(0.45, 0.39, 0.41), Vector3(0, 0.536, -0.01), h.lightened(0.05), {"mat": "hair", "power": 2.6, "segs": 52, "rings": 36, "color2": h,
+		_ball("head", Vector3(0.45, 0.39, 0.41), Vector3(0, 0.536, -0.01), h.lightened(0.05), {"mat": "hair", "power": 2.6, "segs": 40, "rings": 28, "color2": h,
 			"cut": [{"ell": Vector4(0, -0.35, 0.84, 0.72), "z": 0.0}, [Vector3(-1.1, -1.1, -0.5), Vector3(1.1, -0.25, 1.1)], [Vector3(-1.1, -1.1, -1.1), Vector3(1.1, -0.7, 1.1)]]}),
 	]
 	# Messy fringe and tufts on top.
@@ -161,7 +161,7 @@ static func _beard() -> Array:
 	var c := BEARD
 	# A full beard: the lower part of a shell around the head, with a lip line and a moustache.
 	var p: Array = [
-		_ball("head", Vector3(0.44, 0.38, 0.405), Vector3(0, 0.512, 0.0), c, {"mat": "hair", "power": 2.6, "segs": 52, "rings": 36,
+		_ball("head", Vector3(0.44, 0.38, 0.405), Vector3(0, 0.512, 0.0), c, {"mat": "hair", "power": 2.6, "segs": 40, "rings": 28,
 			"cut": [[Vector3(-1.1, -0.05, -1.1), Vector3(1.1, 1.1, 1.1)], {"ell": Vector4(0, 0.12, 0.8, 0.68), "z": 0.0}, [Vector3(-1.1, -1.1, -1.1), Vector3(1.1, 1.1, -0.45)]]}),
 		_ball("head", Vector3(0.16, 0.04, 0.05), Vector3(0, 0.466, FRONT - 0.012), c, {"power": 2.2, "segs": 12, "rings": 8}),
 	]
@@ -183,7 +183,7 @@ static func _hair_her() -> Array:
 	var h := HAIR_HER
 	var p: Array = [
 		# A soft cap of hair over the head, open at the face.
-		_ball("head", Vector3(0.46, 0.4, 0.42), Vector3(0, 0.534, -0.013), h.lightened(0.06), {"mat": "hair", "power": 2.5, "segs": 52, "rings": 36, "color2": h,
+		_ball("head", Vector3(0.46, 0.4, 0.42), Vector3(0, 0.534, -0.013), h.lightened(0.06), {"mat": "hair", "power": 2.5, "segs": 40, "rings": 28, "color2": h,
 			"cut": [{"ell": Vector4(0, -0.4, 0.8, 0.74), "z": -0.05}, [Vector3(-1.1, -1.1, -1.1), Vector3(1.1, -0.6, 1.1)]]}),
 		# Long hair down the back, lighter at the ends.
 		_ball("head", Vector3(0.48, 0.56, 0.27), Vector3(0, 0.46, -0.12), h, {"mat": "hair", "power": 2.3, "color2": HAIR_HER_TIPS, "taper": Vector2(1.0, 0.7), "segs": 24, "rings": 16}),
