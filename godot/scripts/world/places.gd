@@ -73,7 +73,17 @@ func build(builder: IslandBuilder) -> void:
 	_causeway()
 	_oasis()
 	_volcano()
-	spots["ending"] = _marker(Vector3(0, 0, 24.0))
+	# The anniversary ending: "our" bench on the promenade, facing the sea.
+	var best: Interactable = null
+	for bn: Interactable in B.benches:
+		if best == null or bn.global_position.distance_to(Vector3(-6, 2, 14.9)) < best.global_position.distance_to(Vector3(-6, 2, 14.9)):
+			best = bn
+	if best:
+		best.tag = "ending_bench"
+		spots["ending_bench"] = best
+		spots["ending"] = _marker(Vector3(best.global_position.x + 1.6, 0, best.global_position.z - 1.4))
+	else:
+		spots["ending"] = _marker(Vector3(-4.4, 0, 13.4))
 	spots["beach_towels"] = _marker(Vector3(-9.9, 0, 29.0))
 	_bulletin_board()
 

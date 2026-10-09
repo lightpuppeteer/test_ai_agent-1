@@ -36,6 +36,11 @@ const VIEWS := {
 	"villagers": {"action": "_act_villagers"},
 	"perf": {"action": "_act_perf"},
 	"perfq": {"action": "_act_perfq"},
+	"ending_bench": {"action": "_act_ending_bench"},
+	"ending_kiss": {"action": "_act_ending_kiss"},
+	"dig": {"action": "_act_dig"},
+	"digspot": {"action": "_act_digspot"},
+	"minerals": {"action": "_act_minerals"},
 	"perfx": {"action": "_act_perfx"},
 	"tris": {"action": "_act_tris"},
 	"tpbench": {"action": "_act_tpbench"},
@@ -177,6 +182,7 @@ func _reset_story() -> void:
 	if Game.location != "outside":
 		await Places.travel(QuestData.LANDMARKS["spawn"], PI, "outside")
 	Cutscene._fireworks_on = false
+	Cutscene._hearts_on = false
 	Game.camera_rig.end_cinematic()
 	for acc in ["cucumbers", "popcorn", "pepperoni", "yoggi"]:
 		Game.player.set_accessory(acc, false)
@@ -1021,6 +1027,92 @@ func _act_fireworks() -> void:
 	Cutscene.run("fireworks")
 	Cutscene.run("cam:sky")
 	await _frames(150)
+
+
+func _ending_setup() -> void:
+	Cutscene.run("fireworks_off")
+	Cutscene.run("hearts_off")
+	Game.quests.set_process(false)
+	Game.atmosphere.set_preset("night")
+	var bench: Interactable = Places.spot("ending_bench")
+	if Game.partner is Partner:
+		(Game.partner as Partner).release_wait()
+	await _place(bench.global_position + Vector3(0, 0, -1.6), PI, PI, -10.0, 6.0)
+	await _sit_both(bench)
+	await _frames(60)
+	log_line("[ending] bench %s  her %s pose %s  him %s pose %s" % [bench.global_position, Game.player.global_position, Game.player.pose, Game.partner.global_position, Game.partner.pose])
+	Cutscene.run("letterbox")
+	Cutscene.run("cam:bench")
+	Cutscene.run("fireworks")
+	Cutscene.run("hearts_loop")
+	Cutscene.run("lean_in")
+
+
+func _act_ending_bench() -> void:
+	await _ending_setup()
+	await _frames(150)
+	log_line("[ending] cam %s rig %s" % [Game.camera_rig.camera.global_position, Game.camera_rig.global_position])
+
+
+func _act_ending_kiss() -> void:
+	await _ending_setup()
+	await _frames(90)
+	Cutscene.run("cam:bench_close")
+	await _frames(70)
+	Cutscene.run("kiss")
+	Cutscene.run("hearts")
+	await _frames(45)
+
+
+## Starts Biscuit's treasure hunt, then digs up the nearest mineral.
+func _act_dig() -> void:
+	Cutscene.run("fireworks_off")
+	Cutscene.run("hearts_off")
+	Cutscene.run("letterbox_off")
+	Cutscene.run("cam:reset")
+	Game.atmosphere.set_preset("day")
+	Game.quests.set_process(true)
+	Game.quests.start("island_treasures")
+	await _frames(40)
+	var spots := get_tree().current_scene.find_children("Dig_*", "", false, false)
+	log_line("[dig] %d dig spots" % spots.size())
+	for ds in spots:
+		log_line("[dig]   %s at %s" % [ds.name, (ds as Node3D).global_position])
+	var first: DigSpot = spots[0]
+	await _place(first.global_position + Vector3(0, 0, 1.4), 0.0, PI * 0.25, -18.0, 5.0)
+	await _frames(30)
+	first.interact(Game.player)
+	await _frames(70)
+
+
+## An undug crack, close up.
+func _act_digspot() -> void:
+	Cutscene.run("letterbox_off")
+	Cutscene.run("cam:reset")
+	Game.quests.set_process(true)
+	Game.quests.start("island_treasures")
+	await _frames(40)
+	var ds: Node3D = get_tree().current_scene.find_child("Dig_amethyst", false, false)
+	if ds == null:
+		return
+	await _place(ds.global_position + Vector3(3.0, 0, 3.0), PI * 0.25, PI * 0.25, -35.0, 4.5)
+	await _frames(40)
+	cam.current = true
+	cam.global_position = ds.global_position + Vector3(0.0, 1.9, 2.4)
+	cam.look_at(ds.global_position)
+
+
+## The mineral shelf in our living room with all twelve.
+func _act_minerals() -> void:
+	Game.quests.flags["minerals"] = Minerals.LIST.map(func(m: Array) -> String: return m[0])
+	Minerals.refresh_house()
+	var house: Interior = Places.interiors["house"]
+	await Places.travel(house.global_position + house.spawn, 0.0, "house")
+	await _frames(30)
+	cam.current = true
+	cam.global_position = house.to_global(Vector3(house.size.x * 0.5 - 2.6, 1.7, 0.7))
+	cam.look_at(house.to_global(Vector3(house.size.x * 0.5 - 0.1, 1.45, 0.7)))
+	await _frames(10)
 
 
 func _act_carkiss() -> void:

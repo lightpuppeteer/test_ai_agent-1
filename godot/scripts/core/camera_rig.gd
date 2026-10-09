@@ -64,10 +64,13 @@ func snap() -> void:
 
 
 ## Story camera: look at a point from a given yaw/pitch/distance until end_cinematic().
-func cinematic(point: Vector3, yaw_rad: float, pitch_deg: float, dist: float) -> void:
+## `free`: the arm ignores props (benches, trees) so a close shot from behind
+## a bench isn't pushed into the characters' heads.
+func cinematic(point: Vector3, yaw_rad: float, pitch_deg: float, dist: float, free: bool = false) -> void:
 	if not _cine:
 		_saved = [yaw, pitch, distance]
 	_cine = true
+	arm.collision_mask = Game.PHYS_WORLD if free else Game.PHYS_WORLD | Game.PHYS_PROPS
 	_cine_point = point
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(self, "yaw", yaw + wrapf(yaw_rad - yaw, -PI, PI), 1.2).set_trans(Tween.TRANS_SINE)
@@ -79,6 +82,7 @@ func end_cinematic() -> void:
 	if not _cine:
 		return
 	_cine = false
+	arm.collision_mask = Game.PHYS_WORLD | Game.PHYS_PROPS
 	if _saved.size() == 3:
 		var tw := create_tween().set_parallel(true)
 		tw.tween_property(self, "pitch", _saved[1], 1.0)

@@ -219,8 +219,8 @@ const TREES := {
 
 	# ------------------------------------------------------------------ QUEST 8
 	"ending": {
-		"start": {"who": "him", "do": ["letterbox", "face", "fireworks", "cam:sky", "wait:2.5"],
-			"say": "(Standing on the edge of the island as colorful fireworks explode across the night sky) Happy 1st Year Anniversary... Here's to many, many more together.",
+		"start": {"who": "him", "do": ["letterbox", "cam:bench", "fireworks", "wait:1.5", "hearts_loop", "lean_in", "wait:1.5"],
+			"say": "(Sitting close on your bench as fireworks bloom over the sea, he leans his head against yours) Happy 1st Year Anniversary... Here's to many, many more together.",
 			"choices": [
 				["Even if we have to go through all these ridiculous quests all over again?", "a"],
 				["You did pretty good for Year One. What's your plan for Year Two?", "b"],
@@ -237,9 +237,9 @@ const TREES := {
 				["Good luck with Yoggi. But kiss me first!", "kiss"],
 				["Sounds like a plan. Happy Anniversary!", "kiss"],
 			]},
-		"kiss": {"who": "narrator", "do": ["cam:sky", "kiss", "hearts", "wait:1.5"],
-			"say": "(He leans in for a romantic kiss under the fireworks as the screen softly fades to black.)",
-			"after": ["fade_out", "title:Happy 1st Year Anniversary|to more together! ♡", "wait:4.5", "fireworks_off", "fade_in", "letterbox_off", "cam:reset",
+		"kiss": {"who": "narrator", "do": ["cam:bench_close", "wait:0.6", "kiss", "hearts", "wait:1.2"],
+			"say": "(You lean into each other and share a little kiss as the fireworks light up the sea and the screen softly fades to black.)",
+			"after": ["fade_out", "hearts_off", "title:Happy 1st Year Anniversary|to more together! ♡", "wait:4.5", "fireworks_off", "fade_in", "letterbox_off", "cam:reset",
 				"popup:🔁 NEW GAME+ UNLOCKED!|You can now replay all anniversary quests anytime. (Yoggi the cat is still judging your stats.)"]},
 	},
 }

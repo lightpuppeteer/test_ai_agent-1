@@ -51,9 +51,14 @@ Eight quests in order, each with the dialogue trees from `scripts/story/story_da
 the mouse, ↑/↓ + E, or the D-pad + ✕): the first pizza date, flirting on the beach and the first kiss in the car
 ("boyfriend unlocked"), the picnic, the cinema, moving in (decorate, then catch Yoggi and bring him home), the spa
 day, the road to the oasis and the ring under the erupting volcano, and the anniversary ending with fireworks and
-"Happy 1st Year Anniversary, to more together!". Each chapter starts with a little text from Marco: he heads off to
+"Happy 1st Year Anniversary, to more together!" (on their bench on the promenade, with fireworks over the sea, hearts
+bubbling up and a little kiss). Each chapter starts with a little text from Marco: he heads off to
 the place (the pizzeria door, the beach towels, the garden…) and waits there for her. After the ending the island
 is free to wander together, keeping the ring, the decorated house and Yoggi.
+
+**Island Treasures** (side quest from Biscuit the dog on the promenade): twelve minerals are buried around the
+island under star-shaped cracks, from the meadows and the hill to the beach and the oasis. Press E to dig; each
+one goes onto a little shelf in our living room (`scripts/quests/minerals.gd`, `scripts/quests/dig_spot.gd`).
 
 ## Writing quests
 

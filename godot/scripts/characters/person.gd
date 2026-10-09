@@ -520,11 +520,12 @@ func lean(amount: float) -> void:
 		_lean_tween.kill()
 	_lean_tween = create_tween()
 	var target := Vector3.ZERO
-	if pose == "drive" and anchor:
+	if (pose == "drive" or pose == "sit") and anchor:
 		var other: Node3D = Game.partner if self == Game.player else Game.player
 		var local := global_transform.affine_inverse() * other.global_position
 		# Visual is rotated 180°: +X of the body is -X of the pivot.
-		target = Vector3(0.08 * amount, 0, (0.3 if local.x > 0.0 else -0.3) * amount)
+		var roll := 0.3 if pose == "drive" else 0.36
+		target = Vector3(0.08 * amount, 0, (roll if local.x > 0.0 else -roll) * amount)
 	elif pose != "lie":
 		target = Vector3(0.28 * amount, 0, 0)
 	if pose == "lie":

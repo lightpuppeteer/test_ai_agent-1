@@ -23,6 +23,7 @@ extends RefCounted
 ##   car_together  both in the car
 ##   use           {"tag": "oasis_chest"}                     press E on that thing
 ##   collect       {"item": "shell", "count": 3, "spawn": [...]}   deliver {"item": "shell", "to": "Pip"}
+##                 ("dig": true buries Minerals.LIST under star-shaped cracks instead)
 ##   decorate      the house has everything each room needs
 ##   catch         catch Yoggi (he runs away a few times first!)
 ##   time          {"preset": "golden", "auto": true}
@@ -165,15 +166,34 @@ const QUESTS := [
 		"free_roam": true,
 		"steps": [
 			{"type": "time", "preset": "night", "auto": true, "text": "Wait for the night"},
-			{"type": "meet", "at": "ending", "text": "Meet Marco on the beach",
-				"msg": "📱 Marco: Come to the beach tonight. Look up. ✨",
-				"lines": ["You came. Okay — don't look at me. Look at the sky."]},
+			{"type": "meet", "at": "ending", "text": "Meet Marco at our bench on the promenade",
+				"msg": "📱 Marco: Meet me at our bench on the promenade tonight? Best seats on the island. ✨",
+				"lines": ["You came. Sit with me? Something's about to happen over the sea."]},
+			{"type": "sit_together", "tag": "ending_bench", "text": "Sit on the bench with Marco"},
 			{"type": "dialogue", "tree": "ending"},
 		],
 		"finish_title": "One year",
 		"finish": ["Happy 1st anniversary, Tatiana. To more together. ♡", "The island is yours now: wander, beat Marco at the Island Arcade, and visit all our places whenever you like."],
 	},
-	# Side quest.
+	# Side quests.
+	{
+		"id": "island_treasures",
+		"title": "Island Treasures",
+		"giver": "Biscuit",
+		"intro": [
+			"Woof! I mean... hi! I've been sniffing around, and this island is FULL of buried treasure.",
+			"Look for little star-shaped cracks in the ground and dig them up (press E). Twelve shiny things! Go go go!",
+		],
+		"steps": [
+			{"type": "collect", "dig": true, "item": "mineral", "count": 12,
+				"text": "Dig up the 12 minerals hidden around the island (look for star-shaped cracks)"},
+			{"type": "talk", "who": "Biscuit", "text": "Show Biscuit your treasures",
+				"lines": ["All twelve?! Amethyst, a heart opal, a real gold nugget... you two are the best diggers on this island!",
+					"Keep them somewhere special. They'd look lovely in your living room. Woof!"]},
+		],
+		"finish_title": "Island treasures",
+		"finish": ["Twelve shiny things dug up together, now glittering on a little shelf in our living room."],
+	},
 	{
 		"id": "shells_for_pip",
 		"title": "Seashells for Pip",

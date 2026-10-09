@@ -549,7 +549,10 @@ func refresh_tracker() -> void:
 		var vb := VBoxContainer.new()
 		p.add_child(vb)
 		vb.add_child(_label("♡ Our island", 20, ACCENT.darkened(0.2), _title_font))
-		var l := _label("Wander anywhere together, revisit your places, or beat Marco's high scores at the Island Arcade.", 17, INK)
+		var tip := "Wander anywhere together, revisit your places, or beat Marco's high scores at the Island Arcade."
+		if qm.status("island_treasures") == "":
+			tip += " Biscuit (on the promenade) has found something shiny..."
+		var l := _label(tip, 17, INK)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size.x = 320
 		vb.add_child(l)

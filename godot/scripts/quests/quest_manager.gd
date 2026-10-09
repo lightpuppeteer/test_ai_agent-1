@@ -386,6 +386,7 @@ func _on_photo() -> void:
 ## Restores persistent things (ring, decor, Yoggi at home) after loading.
 func _apply_flags() -> void:
 	Plushes.refresh_house()
+	Minerals.refresh_house()
 	Places.refresh_hiscores()
 	var her: Person = Game.player
 	if her and flags.get("ring", false):
@@ -503,6 +504,9 @@ func step_target(id: String) -> Variant:
 func _spawn_pickups(id: String, s: Dictionary) -> void:
 	if _pickups.has(id):
 		return
+	if s.get("dig", false):
+		_spawn_dig_spots(id, s)
+		return
 	var list: Array = []
 	var have: int = inventory.get(s["item"], 0)
 	var spawns: Array = s.get("spawn", [])
@@ -526,6 +530,45 @@ func _spawn_pickups(id: String, s: Dictionary) -> void:
 			changed.emit())
 		list.append(pk)
 	_pickups[id] = list
+
+
+## Buried minerals: one crack per mineral not dug up yet (tracked by name, so
+## they stay put across saves).
+func _spawn_dig_spots(id: String, s: Dictionary) -> void:
+	var list: Array = []
+	var item: String = s["item"]
+	inventory[item] = Minerals.found().size()
+	for i in Minerals.LIST.size():
+		var mid: String = Minerals.LIST[i][0]
+		if mid in Minerals.found():
+			continue
+		var ds := DigSpot.new()
+		ds.mineral = mid
+		ds.name = "Dig_" + mid
+		get_tree().current_scene.add_child(ds)
+		var pos: Vector3 = Minerals.SPOTS[i]
+		if Game.world:
+			pos = Game.world.clear_ground_near(pos)
+		elif Game.terrain:
+			pos.y = Game.terrain.height_at(pos.x, pos.z)
+		ds.global_position = pos
+		# A patch of bare soil so the lawn doesn't hide the crack.
+		if Game.terrain:
+			Game.terrain.paint_soil(Vector2(pos.x, pos.z), 0.9)
+		ds.dug.connect(func(m: String) -> void:
+			Minerals.add_found(m)
+			inventory[item] = Minerals.found().size()
+			Sound.play_ui("pickup")
+			if Game.hud:
+				Game.hud.toast("✨ You dug up %s! (%s)" % [_article(Minerals.info(m)[1]), step_progress(id)])
+			_save()
+			changed.emit())
+		list.append(ds)
+	_pickups[id] = list
+
+
+static func _article(n: String) -> String:
+	return ("an " if n.substr(0, 1).to_lower() in ["a", "e", "i", "o", "u"] else "a ") + n
 
 
 func _clear_pickups(id: String) -> void:

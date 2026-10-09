@@ -13,8 +13,12 @@ extends RefCounted
 ##   music:TRACK      (music: clears)          time:day|golden|night
 ##   ring             she wears the ring now    pepperoni      his slice lands on his lap
 ##   rumble           controller rumble        sit_close      partner sits beside her (picnic)
+##   hearts_loop / hearts_off                  little hearts keep bubbling up over the couple
+##   lean_in / lean_out                        rest against each other (seated or in the car)
+##   cam:bench | bench_close                   from behind a bench they sit on, looking where they look
 
 static var _fireworks_on := false
+static var _hearts_on := false
 
 
 static func run_actions(list: Array) -> void:
@@ -41,6 +45,17 @@ static func run(action: String) -> void:
 		"popup":
 			var parts := arg.split("|")
 			await hud.popup(parts[0], parts[1] if parts.size() > 1 else "")
+		"lean_in":
+			her.lean(0.45)
+			him.lean(0.45)
+		"lean_out":
+			her.lean(0.0)
+			him.lean(0.0)
+		"hearts_loop":
+			_hearts_on = true
+			_hearts_loop(her, him)
+		"hearts_off":
+			_hearts_on = false
 		"hearts":
 			FX.hearts(her.get_parent(), (her.global_position + him.global_position) * 0.5 + Vector3(0, 1.6, 0))
 			Sound.play("smooch", -8.0, 1.2)
@@ -178,6 +193,17 @@ static func _camera(mode: String, her: Person, him: Person) -> void:
 			if v:
 				var to := v.global_position - mid
 				rig.cinematic(mid + Vector3(0, 3.0, 0), atan2(-to.x, -to.z), 8.0, 9.0)
+		"bench", "bench_close":
+			# Behind the two of them on the bench, looking the way they face
+			# (out to sea, where the fireworks are), close enough to see them lean in.
+			var f := -her.global_transform.basis.z
+			f.y = 0.0
+			f = f.normalized() if f.length() > 0.01 else Vector3.BACK
+			var look_yaw := atan2(-f.x, -f.z)
+			if mode == "bench":
+				rig.cinematic(mid + Vector3(0, 1.15, 0), look_yaw, -3.0, 4.4, true)
+			else:
+				rig.cinematic(mid + Vector3(0, 1.05, 0), look_yaw, 1.0, 2.7, true)
 		"sky":
 			# Looking out to sea (fireworks go off to the south), couple low in frame.
 			rig.cinematic(mid + Vector3(0, 2.0, 0), PI, 4.0, 8.0)
@@ -225,3 +251,11 @@ static func _fireworks_loop(near: Node3D) -> void:
 		if randf() < 0.25 and kind != "letters":
 			FX.firework(near.get_parent(), base + Vector3(randf_range(-10, 10), 0, randf_range(-3, 3)), randf_range(9, 14), colors[randi() % colors.size()], "peony")
 		await tree.create_timer(randf_range(0.6, 1.3) if kind != "letters" else 2.6).timeout
+
+
+static func _hearts_loop(her: Person, him: Person) -> void:
+	var tree := her.get_tree()
+	while _hearts_on:
+		var mid := (her.global_position + him.global_position) * 0.5
+		FX.hearts(her.get_parent(), mid + Vector3(randf_range(-0.2, 0.2), 1.45, 0), 4)
+		await tree.create_timer(randf_range(0.5, 0.9)).timeout

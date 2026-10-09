@@ -80,6 +80,27 @@ func put(id: String, x: float, z: float, yaw: float = 0.0, mul: float = 1.0, col
 	return n
 
 
+## The nearest spot to `p` (searching outwards up to 8 m) that is open ground:
+## dry land, not a path, road or paving, and away from props. Returns it on the ground.
+func clear_ground_near(p: Vector3) -> Vector3:
+	for ring in 9:
+		var steps := maxi(1, ring * 6)
+		for k in steps:
+			var a := TAU * k / steps
+			var x := p.x + cos(a) * ring
+			var z := p.z + sin(a) * ring
+			var h := ground(x, z)
+			if h < 0.35:
+				continue
+			var sp := T.splat_at(x, z)
+			if sp.g > 0.3 or sp.b > 0.3 or sp.r > 0.5:
+				continue
+			if T.normal_at(x, z).y < 0.85 or not is_clear(x, z, 0.9):
+				continue
+			return Vector3(x, h, z)
+	return Vector3(p.x, ground(p.x, p.z), p.z)
+
+
 func is_clear(x: float, z: float, r: float = 0.0) -> bool:
 	for c in occupied:
 		if Vector2(c.x, c.y).distance_to(Vector2(x, z)) < c.z + r:
@@ -612,6 +633,8 @@ func _scatter() -> void:
 			continue
 		var sc := rng.randf_range(0.5, 0.75) if id.contains("grass") else rng.randf_range(0.6, 0.9)
 		sets[id].append([Vector3(x, h, z), rng.randf() * TAU, sc])
+		if id.contains("bush"):
+			occupied.append(Vector3(x, z, 0.75))   # (keeps later things, like dig spots, out of bushes)
 	const CELL := 24.0
 	for id in sets:
 		var items: Array = sets[id]
