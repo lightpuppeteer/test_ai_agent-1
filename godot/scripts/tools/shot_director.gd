@@ -40,6 +40,11 @@ const VIEWS := {
 	"ending_kiss": {"action": "_act_ending_kiss"},
 	"dig": {"action": "_act_dig"},
 	"digspot": {"action": "_act_digspot"},
+	"treeinfo": {"action": "_act_treeinfo"},
+	"colors_hill": {"pos": Vector3(-10.0, 12.0, -22.0), "look": Vector3(0.0, 4.0, -46.0)},
+	"colors_west": {"pos": Vector3(-20.0, 9.0, -2.0), "look": Vector3(-42.0, 2.0, -24.0)},
+	"colors_east": {"pos": Vector3(22.0, 9.0, -6.0), "look": Vector3(44.0, 2.0, -22.0)},
+	"flowers": {"pos": Vector3(-30.0, 3.0, -6.0), "look": Vector3(-36.0, 1.6, -12.0)},
 	"minerals": {"action": "_act_minerals"},
 	"perfx": {"action": "_act_perfx"},
 	"tris": {"action": "_act_tris"},
@@ -1083,6 +1088,25 @@ func _act_dig() -> void:
 	await _frames(30)
 	first.interact(Game.player)
 	await _frames(70)
+
+
+## Walk up to the cherry blossom's plaque and read it.
+func _act_treeinfo() -> void:
+	Cutscene.run("letterbox_off")
+	Cutscene.run("cam:reset")
+	for t in get_tree().current_scene.find_children("Special_*", "", true, false):
+		log_line("[trees] %s at %s" % [t.name, (t as Node3D).global_position])
+	var sak: Node3D = get_tree().current_scene.find_child("Special_sakura", true, false)
+	var best: Interactable = null
+	for it in get_tree().get_nodes_in_group("interactable"):
+		if (it as Interactable).kind == "look" and (best == null or (it as Node3D).global_position.distance_to(sak.global_position) < best.global_position.distance_to(sak.global_position)):
+			best = it
+	var d := best.global_position - sak.global_position
+	d.y = 0.0
+	await _place(best.global_position + d.normalized() * 1.2, atan2(d.x, d.z), atan2(d.x, d.z), -12.0, 7.0)
+	await _frames(30)
+	best.interact(Game.player)
+	await _frames(40)
 
 
 ## An undug crack, close up.

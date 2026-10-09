@@ -9,6 +9,21 @@ const CEDAR_GREENS := [Color(0.22, 0.55, 0.36), Color(0.27, 0.6, 0.38)]
 const BARK := Color(0.55, 0.38, 0.25)
 const FRUITS := {"orange": Color(1.0, 0.6, 0.15), "apple": Color(0.9, 0.2, 0.2), "peach": Color(1.0, 0.7, 0.62), "pear": Color(0.75, 0.85, 0.3), "cherry": Color(0.85, 0.12, 0.25)}
 
+## Colourful and special trees ("species" kind; the name goes in `fruit`).
+## leaf: canopy colour · dots: little blossoms/olives over it · hang: drooping
+## flower clusters (wisteria) · bark / thick: trunk colour and girth.
+const SPECIES := {
+	"sakura": {"leaf": Color(1.0, 0.72, 0.83), "dots": Color(1.0, 0.93, 0.96), "bark": Color(0.42, 0.29, 0.25)},
+	"magnolia": {"leaf": Color(0.99, 0.95, 0.94), "dots": Color(0.96, 0.62, 0.76), "bark": Color(0.62, 0.56, 0.5)},
+	"jacaranda": {"leaf": Color(0.66, 0.55, 0.95), "dots": Color(0.84, 0.74, 1.0), "bark": Color(0.5, 0.4, 0.34)},
+	"maple": {"leaf": Color(0.93, 0.3, 0.22), "dots": Color(1.0, 0.58, 0.25), "bark": Color(0.45, 0.3, 0.24)},
+	"ginkgo": {"leaf": Color(1.0, 0.8, 0.28), "dots": Color(1.0, 0.92, 0.55), "bark": Color(0.55, 0.42, 0.3)},
+	"plum": {"leaf": Color(0.97, 0.52, 0.66), "dots": Color(1.0, 0.85, 0.9), "bark": Color(0.4, 0.27, 0.24)},
+	"cork": {"leaf": Color(0.28, 0.52, 0.3), "bark": Color(0.66, 0.34, 0.22), "thick": 1.35},
+	"olive": {"leaf": Color(0.6, 0.7, 0.52), "dots": Color(0.3, 0.33, 0.2), "bark": Color(0.52, 0.46, 0.38), "thick": 1.2},
+	"wisteria": {"leaf": Color(0.42, 0.66, 0.34), "hang": Color(0.72, 0.56, 0.96)},
+}
+
 static var _meshes := {}
 static var _mat: Material
 
@@ -24,7 +39,8 @@ static func material() -> Material:
 	return _mat
 
 
-## kind: "round" | "cedar" | "fruit". Returns a Node3D (mesh + trunk collider),
+## kind: "round" | "cedar" | "fruit" | "stonepine" | "species" (SPECIES name in
+## `fruit`). Returns a Node3D (mesh + trunk collider),
 ## about 4 m tall at scale 1.
 static func make(kind: String, variant: int, fruit: String = "") -> Node3D:
 	var key := "%s_%d_%s" % [kind, variant, fruit]
@@ -66,9 +82,19 @@ static func _build(kind: String, variant: int, fruit: String) -> ArrayMesh:
 				y += h * 0.55
 				r *= 0.74
 			_blob(st, Vector3(0, y + 0.15, 0), 0.22, g.lightened(0.18), g, rng, 0.0)
+		"stonepine":
+			# Portuguese stone pine: a tall bare trunk and a flat umbrella crown.
+			_trunk(st, 0.24, 0.14, 3.0, rng, Color(0.58, 0.4, 0.3))
+			var pg := Color(0.24, 0.5, 0.3)
+			_blob(st, Vector3(0, 3.55, 0), 1.6, pg.lightened(0.12), pg.darkened(0.15), rng, 0.08, 14, 7, Vector3(1.0, 0.42, 1.0))
+			for i in 5:
+				var a := TAU * i / 5.0 + rng.randf() * 0.5
+				_blob(st, Vector3(cos(a) * 1.1, 3.45 + rng.randf_range(-0.1, 0.15), sin(a) * 1.1), 0.95, pg.lightened(0.08), pg.darkened(0.2), rng, 0.06, 11, 6, Vector3(1.0, 0.45, 1.0))
 		_:
-			_trunk(st, 0.26, 0.16, 1.9, rng)
-			var g: Color = LEAF_GREENS[variant % LEAF_GREENS.size()]
+			var sp: Dictionary = SPECIES.get(fruit, {}) if kind == "species" else {}
+			var thick: float = sp.get("thick", 1.0)
+			_trunk(st, 0.26 * thick, 0.16 * thick, 1.9, rng, sp.get("bark", BARK))
+			var g: Color = sp.get("leaf", LEAF_GREENS[variant % LEAF_GREENS.size()])
 			# A puffy cloud of leaf balls: big middle, a ring, a crown.
 			var centre := Vector3(0, 2.75, 0)
 			_blob(st, centre, 1.25, g.lightened(0.08), g.darkened(0.2), rng, 0.06)
@@ -82,6 +108,26 @@ static func _build(kind: String, variant: int, fruit: String) -> ArrayMesh:
 				tops.append(p + Vector3(0, r * 0.8, 0) + (p - centre).normalized() * r * 0.4)
 			var crown := centre + Vector3(rng.randf_range(-0.2, 0.2), 0.95, rng.randf_range(-0.2, 0.2))
 			_blob(st, crown, 0.85, g.lightened(0.16), g.darkened(0.05), rng, 0.05)
+			if sp.has("dots"):
+				# Blossoms (or olives) dotted over the canopy.
+				var dc: Color = sp["dots"]
+				for i in 22:
+					var a := rng.randf() * TAU
+					var e := rng.randf_range(0.2, 1.35)
+					var dir := Vector3(cos(a) * sin(e), cos(e), sin(a) * sin(e))
+					var p := centre + Vector3(0, 0.25, 0) + Vector3(dir.x * 1.62, dir.y * 1.25, dir.z * 1.62)
+					_blob(st, p, rng.randf_range(0.1, 0.15), dc.lightened(0.1), dc.darkened(0.08), rng, 0.0, 6, 4)
+			if sp.has("hang"):
+				# Wisteria: long drooping flower clusters under the canopy edge.
+				var hc: Color = sp["hang"]
+				for i in 12:
+					var a := TAU * i / 12.0 + rng.randf() * 0.3
+					var p := centre + Vector3(cos(a) * 1.45, -0.55, sin(a) * 1.45)
+					var rr := 0.2
+					for k in 4:
+						_blob(st, p, rr, hc.lightened(0.15 + k * 0.05), hc.darkened(0.1), rng, 0.0, 7, 5)
+						p.y -= rr * 1.2
+						rr *= 0.8
 			if kind == "fruit" and FRUITS.has(fruit):
 				var fc: Color = FRUITS[fruit]
 				for i in 6:
@@ -94,10 +140,10 @@ static func _build(kind: String, variant: int, fruit: String) -> ArrayMesh:
 
 
 ## A tapered trunk with a little root flare and a slight lean.
-static func _trunk(st: SurfaceTool, r0: float, r1: float, h: float, rng: RandomNumberGenerator) -> void:
+static func _trunk(st: SurfaceTool, r0: float, r1: float, h: float, rng: RandomNumberGenerator, bark: Color = BARK) -> void:
 	var lean := Vector3(rng.randf_range(-0.08, 0.08), 0, rng.randf_range(-0.08, 0.08))
 	var prof: Array[Vector2] = [Vector2(r0 * 1.35, 0.0), Vector2(r0 * 1.05, 0.12), Vector2(r0, 0.3), Vector2((r0 + r1) * 0.5, h * 0.6), Vector2(r1, h), Vector2(r1 * 0.6, h + 0.3)]
-	_lathe(st, Vector3.ZERO, prof, 10, BARK.lightened(0.05), BARK.darkened(0.2), lean / h)
+	_lathe(st, Vector3.ZERO, prof, 10, bark.lightened(0.05), bark.darkened(0.2), lean / h)
 
 
 ## A rounded cone (cedar layer): wide soft rim, pointed top.
@@ -136,7 +182,7 @@ static func _lathe(st: SurfaceTool, base: Vector3, prof: Array[Vector2], seg: in
 
 
 ## A soft, slightly lumpy ball of leaves (smooth normals, lighter on top).
-static func _blob(st: SurfaceTool, c: Vector3, r: float, top: Color, bottom: Color, rng: RandomNumberGenerator, lump: float, seg: int = 11, rings: int = 7) -> void:
+static func _blob(st: SurfaceTool, c: Vector3, r: float, top: Color, bottom: Color, rng: RandomNumberGenerator, lump: float, seg: int = 11, rings: int = 7, sq: Vector3 = Vector3.ONE) -> void:
 	var phase := rng.randf() * TAU
 	var verts := []
 	for j in rings + 1:
@@ -150,7 +196,7 @@ static func _blob(st: SurfaceTool, c: Vector3, r: float, top: Color, bottom: Col
 			var rr := r * (1.0 + lump * sin(th * 3.0 + phase) * sin(phi * 2.0 + phase))
 			if dir.y < -0.3:
 				rr *= 0.92     # a slightly flatter underside
-			row.append([c + dir * rr, dir, bottom.lerp(top, clampf(dir.y * 0.5 + 0.5, 0.0, 1.0))])
+			row.append([c + dir * rr * sq, Vector3(dir.x / sq.x, dir.y / sq.y, dir.z / sq.z).normalized(), bottom.lerp(top, clampf(dir.y * 0.5 + 0.5, 0.0, 1.0))])
 		verts.append(row)
 	for j in rings:
 		for i in seg:

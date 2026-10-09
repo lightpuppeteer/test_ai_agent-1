@@ -50,6 +50,7 @@ func _ready() -> void:
 	places.name = "Places"
 	add_child(places)
 	places.build(self)
+	SpecialTrees.build(self)
 	_trees()
 	_scatter()
 	if not Game.options.has("nograss"):
@@ -82,9 +83,11 @@ func put(id: String, x: float, z: float, yaw: float = 0.0, mul: float = 1.0, col
 
 ## The nearest spot to `p` (searching outwards up to 8 m) that is open ground:
 ## dry land, not a path, road or paving, and away from props. Returns it on the ground.
-func clear_ground_near(p: Vector3) -> Vector3:
+func clear_ground_near(p: Vector3, r: float = 0.9) -> Vector3:
 	for ring in 9:
 		var steps := maxi(1, ring * 6)
+		if r > 1.5:
+			steps = maxi(1, ring * 3)
 		for k in steps:
 			var a := TAU * k / steps
 			var x := p.x + cos(a) * ring
@@ -95,7 +98,9 @@ func clear_ground_near(p: Vector3) -> Vector3:
 			var sp := T.splat_at(x, z)
 			if sp.g > 0.3 or sp.b > 0.3 or sp.r > 0.5:
 				continue
-			if T.normal_at(x, z).y < 0.85 or not is_clear(x, z, 0.9):
+			if T.normal_at(x, z).y < 0.85 or not is_clear(x, z, r):
+				continue
+			if r > 1.5 and (L.path_sd(x, z) < r or L.road_sd(x, z) < L.ROAD_WIDTH * 0.5 + r or L.is_flat_zone(x, z) > 0.05):
 				continue
 			return Vector3(x, h, z)
 	return Vector3(p.x, ground(p.x, p.z), p.z)
@@ -338,7 +343,7 @@ func _town() -> void:
 		var p := c + Vector2(cos(a), sin(a)) * 9.0
 		if k == 3:
 			continue   # north: town hall steps
-		soil_bed(p.x, p.y, 1.5, ["nature-kit/flower_redA", "nature-kit/flower_yellowA", "nature-kit/flower_purpleA", "nature-kit/flower_redB"])
+		soil_bed(p.x, p.y, 1.5, ["nature-kit/flower_redA", "nature-kit/flower_whiteL", "nature-kit/flower_purpleL", "nature-kit/flower_pinkA", "nature-kit/flower_redL", "nature-kit/flower_whiteD"])
 	# Market stalls and a café corner.
 	for k in [0, 3]:
 		var a := deg_to_rad(22.5 + 45.0 * k)
@@ -358,7 +363,7 @@ func _town() -> void:
 		for hz in [-16.5, -4.5]:
 			for sx in [-3.2, 3.2]:
 				put("fantasy-town-kit/hedge", hx + sx, hz, 0.0, 1.0, "box", {}, 0.8)
-			soil_bed(hx - 4.8, hz, 1.0, ["nature-kit/flower_yellowA", "nature-kit/flower_redC", "nature-kit/flower_purpleB"])
+			soil_bed(hx - 4.8, hz, 1.0, ["nature-kit/flower_yellowA", "nature-kit/flower_pinkL", "nature-kit/flower_purpleB", "nature-kit/flower_whiteD"])
 	# Signpost at the south exit.
 	put("survival-kit/signpost", c.x + 2.2, c.y + 13.6, -20.0, 1.0, "cylinder", {"collider_shrink": 0.3}, 0.6)
 
@@ -540,7 +545,7 @@ func _hill() -> void:
 		var ez := L.HILL_EDGE_Z + 1.4 * sin(x * 0.09) + 0.8 * sin(x * 0.23 + 1.0) - 2.2
 		put("nature-kit/fence_simple", x, ez, 0.0, 1.0, "box", {}, 0.0)
 		x += Props.model_aabb("nature-kit/fence_simple").size.x * Props.kit_scale("nature-kit/fence_simple") * 0.98
-	soil_bed(-8.0, -46.0, 2.2, ["nature-kit/flower_redA", "nature-kit/flower_purpleA", "nature-kit/flower_yellowB"])
+	soil_bed(-8.0, -46.0, 2.2, ["nature-kit/flower_redL", "nature-kit/flower_purpleA", "nature-kit/flower_whiteL", "nature-kit/flower_pinkB"])
 	soil_bed(-14.0, -50.0, 1.8, ["nature-kit/flower_purpleB", "nature-kit/flower_redB"])
 
 
@@ -577,9 +582,22 @@ func _trees() -> void:
 		var edge_bias := smoothstep(-30.0, -10.0, sd)
 		if rng.randf() > 0.25 + edge_bias * 0.75:
 			continue
-		var kind := "cedar" if (z < -40.0 and rng.randf() < 0.55) else ("fruit" if rng.randf() < 0.22 else "round")
 		var fruits := ["orange", "apple", "peach", "pear", "cherry"]
-		tree(x, z, kind, rng.randi() % 4, fruits[rng.randi() % fruits.size()], rng.randf_range(0.85, 1.15))
+		var v := rng.randi() % 4
+		var mul := rng.randf_range(0.85, 1.15)
+		if z < -40.0 and rng.randf() < 0.45:
+			tree(x, z, "cedar" if rng.randf() < 0.75 else "stonepine", v, "", mul)
+			placed += 1
+			continue
+		# A colourful mix: blossoms, autumn reds and golds among the greens.
+		var r := rng.randf()
+		if r < 0.12:
+			tree(x, z, "fruit", v, fruits[rng.randi() % fruits.size()], mul)
+		elif r < 0.66:
+			var bloom := ["sakura", "sakura", "sakura", "jacaranda", "jacaranda", "magnolia", "maple", "maple", "ginkgo", "plum", "wisteria", "olive"]
+			tree(x, z, "species", v, bloom[rng.randi() % bloom.size()], mul)
+		else:
+			tree(x, z, "round", v, "", mul)
 		placed += 1
 
 
@@ -594,9 +612,15 @@ func _scatter() -> void:
 		"nature-kit/mushroom_redGroup": [],
 	}
 	for f in _flower_points:
-		if sets.has(f[0]):
-			sets[f[0]].append([f[1], f[2], f[3]])
-	var wild_flowers := ["nature-kit/flower_redA", "nature-kit/flower_yellowA", "nature-kit/flower_purpleA", "nature-kit/flower_yellowB"]
+		if not sets.has(f[0]):
+			sets[f[0]] = []
+		sets[f[0]].append([f[1], f[2], f[3]])
+	# Lots of colour: tulips, cosmos, pompoms, lilies and daisies in many shades.
+	var wild_flowers := ["nature-kit/flower_redA", "nature-kit/flower_yellowA", "nature-kit/flower_purpleA", "nature-kit/flower_yellowB",
+		"nature-kit/flower_pinkA", "nature-kit/flower_whiteA", "nature-kit/flower_orangeA", "nature-kit/flower_blueB", "nature-kit/flower_pinkB",
+		"nature-kit/flower_lilacC", "nature-kit/flower_pinkC", "nature-kit/flower_whiteL", "nature-kit/flower_purpleL", "nature-kit/flower_redL",
+		"nature-kit/flower_pinkL", "nature-kit/flower_orangeL", "nature-kit/flower_whiteD", "nature-kit/flower_pinkD", "nature-kit/flower_crimsonA"]
+	var hydrangeas := ["nature-kit/plant_bushHydrangeaBlue", "nature-kit/plant_bushHydrangeaPink", "nature-kit/plant_bushHydrangeaLilac", "nature-kit/plant_bushHydrangeaWhite"]
 	var n := 0
 	while n < 9000:
 		n += 1
@@ -619,19 +643,25 @@ func _scatter() -> void:
 			continue   # (the thick GrassField lawn replaces the old accent tufts)
 		elif r < 0.36:
 			id = ["nature-kit/plant_bush", "nature-kit/plant_bushDetailed"][rng.randi() % 2]
+			if rng.randf() < 0.3:
+				id = hydrangeas[rng.randi() % hydrangeas.size()]
 		elif r < 0.38:
 			id = "nature-kit/mushroom_redGroup"
-		elif r > 0.66:
+		elif r > 0.74:
 			continue
 		else:
 			# Flowers come in little clumps.
 			id = wild_flowers[rng.randi() % wild_flowers.size()]
+			if not sets.has(id):
+				sets[id] = []
 			for k in rng.randi_range(2, 5):
 				var fx := x + rng.randf_range(-0.8, 0.8)
 				var fz := z + rng.randf_range(-0.8, 0.8)
 				sets[id].append([Vector3(fx, ground(fx, fz), fz), rng.randf() * TAU, rng.randf_range(0.45, 0.6)])
 			continue
 		var sc := rng.randf_range(0.5, 0.75) if id.contains("grass") else rng.randf_range(0.6, 0.9)
+		if not sets.has(id):
+			sets[id] = []
 		sets[id].append([Vector3(x, h, z), rng.randf() * TAU, sc])
 		if id.contains("bush"):
 			occupied.append(Vector3(x, z, 0.75))   # (keeps later things, like dig spots, out of bushes)

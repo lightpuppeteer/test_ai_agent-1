@@ -17,7 +17,15 @@ const FLOWER_COLS := {
 	"red": [Color(0.98, 0.4, 0.47), Color(1.0, 0.86, 0.4)],
 	"yellow": [Color(1.0, 0.84, 0.3), Color(0.95, 0.55, 0.2)],
 	"purple": [Color(0.72, 0.55, 1.0), Color(1.0, 0.92, 0.55)],
+	"white": [Color(0.99, 0.97, 0.94), Color(1.0, 0.82, 0.3)],
+	"pink": [Color(1.0, 0.62, 0.78), Color(1.0, 0.9, 0.5)],
+	"blue": [Color(0.45, 0.62, 1.0), Color(1.0, 0.95, 0.6)],
+	"orange": [Color(1.0, 0.58, 0.22), Color(0.9, 0.3, 0.18)],
+	"lilac": [Color(0.8, 0.64, 1.0), Color(1.0, 0.95, 0.7)],
+	"crimson": [Color(0.88, 0.14, 0.28), Color(1.0, 0.85, 0.4)],
 }
+## Hydrangea bush colours (nature-kit/plant_bushHydrangea<Colour>).
+const HYDRANGEA := {"Blue": Color(0.5, 0.62, 1.0), "Pink": Color(1.0, 0.62, 0.8), "Lilac": Color(0.78, 0.62, 1.0), "White": Color(0.97, 0.96, 1.0)}
 
 static var _cache := {}
 static var _mats := {}
@@ -33,6 +41,9 @@ static func kind(id: String) -> String:
 			return "grass"
 		"nature-kit/plant_bush", "nature-kit/plant_bushDetailed":
 			return "bush"
+	if id.begins_with("nature-kit/plant_bushHydrangea"):
+		return "hydrangea"
+	match id:
 		"nature-kit/mushroom_redGroup":
 			return "mushroom"
 		"nature-kit/rock_largeA", "nature-kit/rock_largeC", "nature-kit/rock_smallA", "nature-kit/stone_smallFlatA":
@@ -78,6 +89,8 @@ static func mesh(id: String) -> ArrayMesh:
 			_grass(b, id)
 		"bush":
 			_bush(b, id == "nature-kit/plant_bushDetailed")
+		"hydrangea":
+			_hydrangea(b, HYDRANGEA.get(id.trim_prefix("nature-kit/plant_bushHydrangea"), HYDRANGEA["Blue"]))
 		"mushroom":
 			_mushrooms(b)
 		"rock":
@@ -315,6 +328,29 @@ static func _flower(b: MB, id: String) -> void:
 				var d := (ax.rotated(face, a)).normalized()
 				b.disc(top + d * 0.08 + face * 0.01, face, d, 0.085, 0.065, petal.lightened(0.12), petal, 5, 0.18)
 			b.blob(top + face * 0.03, Vector3(0.045, 0.03, 0.045), heart, heart.darkened(0.2), 5, 3)
+		"L":
+			# Lily: six long pointed petals curling out from a trumpet, with stamens.
+			var up := Vector3.UP
+			for i in 6:
+				var a := TAU * i / 6.0 + (0.3 if i % 2 == 1 else 0.0)
+				var d := Vector3(cos(a), 0, sin(a))
+				var l := 1.0 if i % 2 == 0 else 0.88
+				b.ribbon([top, top + (d * 0.05 + up * 0.06) * l, top + (d * 0.12 + up * 0.1) * l, top + (d * 0.19 + up * 0.09) * l],
+						[0.01, 0.036, 0.03, 0.0], d.cross(up), petal.darkened(0.05), petal.lightened(0.12), 0.35)
+			b.blob(top + Vector3(0, 0.02, 0), Vector3(0.035, 0.04, 0.035), heart.lightened(0.2), heart, 5, 3)
+			for i in 3:
+				var a := TAU * i / 3.0 + 0.5
+				var tip := top + Vector3(cos(a) * 0.04, 0.12, sin(a) * 0.04)
+				b.tube([top, tip], [0.006, 0.005], [STEM.lightened(0.2), STEM.lightened(0.3)], 3)
+				b.blob(tip, Vector3(0.016, 0.01, 0.016), Color(0.75, 0.35, 0.15), Color(0.6, 0.25, 0.1), 4, 2)
+		"D":
+			# Daisy: a ring of thin petals around a round yellow heart.
+			var face := (Vector3.UP + Vector3(0.25, 0, 0.1)).normalized()
+			var ax := face.cross(Vector3.FORWARD).normalized()
+			for i in 11:
+				var d := ax.rotated(face, TAU * i / 11.0).normalized()
+				b.ribbon([top + d * 0.025, top + d * 0.08 + face * 0.012, top + d * 0.13], [0.012, 0.022, 0.0], d.cross(face), petal, petal.lightened(0.05), 0.2)
+			b.blob(top + face * 0.012, Vector3(0.04, 0.025, 0.04), Color(1.0, 0.82, 0.25), Color(0.95, 0.65, 0.15), 6, 3)
 		_:
 			# Pompom: a round, lumpy flower ball.
 			b.blob(top + Vector3(0, 0.08, 0), Vector3(0.12, 0.11, 0.12), petal.lightened(0.15), petal.darkened(0.15), 6, 4, 0.12)
@@ -370,6 +406,19 @@ static func _bush(b: MB, detailed: bool) -> void:
 			var d := Vector3(cos(a) * sin(e), cos(e), sin(a) * sin(e))
 			var c := Vector3(0, 0.34, 0) * k + Vector3(d.x * 0.5, d.y * 0.45, d.z * 0.5) * k
 			b.blob(c, Vector3(0.085, 0.06, 0.085), col.lightened(0.1), col.darkened(0.05), 5, 3)
+
+
+## A leafy bush covered in big round hydrangea flower heads.
+static func _hydrangea(b: MB, col: Color) -> void:
+	for p in [[Vector3(0, 0.3, 0), Vector3(0.48, 0.36, 0.48)], [Vector3(0.36, 0.22, 0.14), Vector3(0.3, 0.25, 0.3)], [Vector3(-0.3, 0.22, 0.2), Vector3(0.3, 0.24, 0.3)]]:
+		b.blob(p[0], p[1], LEAF_DARK.lightened(0.1), LEAF_DARK.darkened(0.1), 8, 5, 0.07)
+	for i in 8:
+		var a := TAU * i / 8.0 + b.jitter(0.3)
+		var e := b.rng.randf_range(0.3, 1.1)
+		var d := Vector3(cos(a) * sin(e), cos(e), sin(a) * sin(e))
+		var c := Vector3(0, 0.32, 0) + Vector3(d.x * 0.48, d.y * 0.36, d.z * 0.48)
+		var tint := col.lerp(Color(1, 1, 1), b.rng.randf_range(0.0, 0.2))
+		b.blob(c, Vector3(0.15, 0.13, 0.15), tint.lightened(0.12), tint.darkened(0.12), 7, 4, 0.18)
 
 
 static func _mushrooms(b: MB) -> void:
